@@ -1,0 +1,9 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rayjob-creator-role
+rules:
+- apiGroups: ["ray.io"]
+  resources: ["rayjobs"]
+  # Permissões necessárias para o 'kubectl apply' funcionar
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]

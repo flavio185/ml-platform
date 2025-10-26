@@ -1,0 +1,12 @@
+mlflow:
+  image: flavio185/mlflow:3.3.0-psql
+postgresql:
+  image: postgres:13
+  username: mlflow
+  password: mlflow
+  database: mlflow-db
+minio:
+  image: minio/minio
+  accessKey: minio
+  secretKey: minio123
+  bucket: mlflow-bucket

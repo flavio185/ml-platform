@@ -1,0 +1,78 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: model-training-job
+  namespace: app-ns
+spec:
+  entrypoint: "uv run ml_classification/modeling/train.py"
+  runtimeEnvYAML: |
+      working_dir: https://github.com/flavio185/ml-default-payment-project/archive/refs/tags/0.1.0.zip
+      "pip": ["smart_open ", "boto3"],
+      env_vars:
+        AWS_ACCESS_KEY_ID: 
+        AWS_SECRET_ACCESS_KEY: 
+        # MLFLOW_TRACKING_URI: http://nginx.mlflow-ns.svc.cluster.local
+  rayClusterSpec:
+    rayVersion: "2.46.0" # pin to your Ray version
+    headGroupSpec:
+      serviceType: ClusterIP
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"
+            # Share logs with Fluent Bit
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          # Fluent Bit sidecar
+          - name: fluentbit
+            image: fluent/fluent-bit:3.2.2
+            # Get Kubernetes metadata via downward API
+            env:
+            - name: POD_LABELS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['ray.io/cluster']
+            # These resource requests for Fluent Bit should be sufficient in production.
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+          # Log and config volumes
+          volumes:
+          - name: ray-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: fluentbit-config
+    workerGroupSpecs:
+    - groupName: workers
+      minReplicas: 1
+      maxReplicas: 5
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"

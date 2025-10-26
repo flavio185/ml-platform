@@ -1,0 +1,89 @@
+# values.yaml
+# Common settings for observability-ns stack in AKS
+
+global:
+  nodeSelector:
+    pool: observability-ns
+  tolerations:
+    - key: "dedicated"
+      operator: "Equal"
+      value: "observability-ns"
+      effect: "NoSchedule"
+
+# -----------------------------------
+# Prometheus + Grafana (kube-prometheus-stack)
+# -----------------------------------
+prometheus:
+  prometheusSpec:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "2"
+        memory: "6Gi"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Loki
+          type: loki
+          access: proxy
+          url: http://loki.observability-ns.svc.cluster.local:3100
+# -----------------------------------
+# Loki (loki-stack)
+# -----------------------------------
+loki:
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+# disable extras we don’t need since we’ll use Fluent Bit
+promtail:
+  enabled: false
+
+# -----------------------------------
+# Fluent Bit (grafana/fluent-bit)
+# -----------------------------------
+fluent-bit:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  backend:
+    type: loki
+    loki:
+      host: loki.observability-ns.svc.cluster.local
+      port: 3100

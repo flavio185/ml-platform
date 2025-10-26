@@ -1,0 +1,15 @@
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        editable: true
+        url: http://loki-gateway.default
+        jsonData:
+          timeout: 60
+          maxLines: 1000
+          httpHeaderName1: "X-Scope-OrgID"
+        secureJsonData:
+          httpHeaderValue1: "test"

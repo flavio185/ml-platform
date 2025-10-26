@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentbit-config
+  namespace: app-ns
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /tmp/ray/session_latest/logs/*
+        Tag ray
+        Path_Key true
+        Refresh_Interval 5
+    [FILTER]
+        Name modify
+        Match ray
+        Add POD_LABELS ${POD_LABELS}
+    ########################################
+    # OUTPUT
+    ########################################
+    [OUTPUT]
+        Name loki
+        Match *
+        Host loki.monitoring.svc.cluster.local
+        Port 3100
+        Labels RayCluster=${POD_LABELS}, namespace=${K8S_NAMESPACE_NAME}
+        tenant_id test

@@ -1,0 +1,42 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: model-training-job-4
+  namespace: app-ns
+spec:
+  entrypoint: "uv run ml_classification/modeling/train.py"
+  runtimeEnvYAML: |
+      working_dir: https://github.com/flavio185/ml-default-payment-project/archive/refs/tags/0.1.0.zip
+      env_vars:
+        AWS_ACCESS_KEY_ID: 
+        AWS_SECRET_ACCESS_KEY: 
+  rayClusterSpec:
+    rayVersion: "2.46.0" # pin to your Ray version
+    headGroupSpec:
+      serviceType: ClusterIP
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"
+    workerGroupSpecs:
+    - groupName: workers
+      minReplicas: 1
+      maxReplicas: 5
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: mlflow
+description: A Helm chart for MLflow tracking server
+version: 0.1.0

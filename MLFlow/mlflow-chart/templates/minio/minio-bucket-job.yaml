@@ -1,0 +1,13 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-minio-bucket
+  namespace: {{ .Release.Namespace }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: mc
+          image: minio/mc
+          command: ["sh", "-c", "mc alias set myminio http://minio:9000 {{ .Values.minio.accessKey }} {{ .Values.minio.secretKey }} && mc mb myminio/{{ .Values.minio.bucket }}"]
+      restartPolicy: OnFailure
