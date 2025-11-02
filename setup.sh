@@ -20,7 +20,7 @@ helm install mlflow MLFlow/mlflow-chart -n mlflow-ns --create-namespace
 sleep 30
 
 # Setup KServe
-KServe/auto-install-kserve.sh
+Inference/setup-kserve-stack.sh
 sleep 30
 
 

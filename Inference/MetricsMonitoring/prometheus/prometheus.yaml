@@ -3,7 +3,7 @@ kind: Prometheus
 metadata:
   name: prometheus
 spec:
-  serviceAccountName: kfserving-prometheus
+  serviceAccountName: kserve-prometheus
   serviceMonitorNamespaceSelector: {}
   serviceMonitorSelector: {}
   resources:

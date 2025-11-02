@@ -18,4 +18,4 @@ spec:
           memory: "1Gi"
     logger:
       mode: all
-      url: http://message-dumper.default.svc.cluster.local
+      url: http://message-dumper.knative-serving.svc.cluster.local

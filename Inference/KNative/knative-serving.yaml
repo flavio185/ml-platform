@@ -1,0 +1,11 @@
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  version: 1.15.2
+  config:
+    domain:
+      # Patch the external domain as the default domain svc.cluster.local is not exposed on ingress (from knative 1.8)
+      example.com: ""

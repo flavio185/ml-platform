@@ -152,18 +152,7 @@ if [ "${deploymentMode}" = "Serverless" ]; then
          # Patch the external domain as the default domain svc.cluster.local is not exposed on ingress (from knative 1.8)
          example.com: ""
 EOF
-   kubectl apply -f - <<EOF
-   apiVersion: serving.knative.dev/v1
-   kind: Service
-   metadata:
-    name: message-dumper
-    namespace: knative-serving
-   spec:
-    template:
-      spec:
-        containers:
-        - image: gcr.io/knative-releases/knative.dev/eventing-contrib/cmd/event_display
-EOF
+
    echo "😀 Successfully installed Knative"
 fi
 
