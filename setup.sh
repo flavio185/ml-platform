@@ -29,3 +29,9 @@ sleep 30
 source .env
 
 app-ns/setup-app-ns.sh
+
+# Setup Monitoring (Prometheus + Grafana)
+echo "🚀 Setting up Monitoring"
+echo "-----------------------------------"
+#
+Observability/setup-monitoring.sh

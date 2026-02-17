@@ -9,19 +9,24 @@ spec:
       working_dir: https://github.com/flavio185/ml-default-payment-project/archive/refs/tags/0.1.0.zip
       "pip": ["smart_open ", "boto3"],
       env_vars:
-        AWS_ACCESS_KEY_ID: 
-        AWS_SECRET_ACCESS_KEY: 
+        AWS_ACCESS_KEY_ID:
+        AWS_SECRET_ACCESS_KEY:
         # MLFLOW_TRACKING_URI: http://nginx.mlflow-ns.svc.cluster.local
   rayClusterSpec:
     rayVersion: "2.46.0" # pin to your Ray version
     headGroupSpec:
       serviceType: ClusterIP
-      rayStartParams: {}
+      rayStartParams:
+        metrics-export-port: "8080"
       template:
         spec:
           containers:
           - name: ray-head
             image: rayproject/ray:2.46.0
+            ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
             resources:
               limits:
                 cpu: "1"
@@ -65,14 +70,49 @@ spec:
     - groupName: workers
       minReplicas: 1
       maxReplicas: 5
-      rayStartParams: {}
+      rayStartParams:
+        metrics-export-port: "8080"
       template:
         spec:
           containers:
           - name: ray-worker
             image: rayproject/ray:2.46.0
+            ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
             resources:
               limits:
                 cpu: "1"
               requests:
                 cpu: "200m"
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          # Fluent Bit sidecar
+          - name: fluentbit
+            image: fluent/fluent-bit:3.2.2
+            env:
+            - name: POD_LABELS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['ray.io/cluster']
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+          volumes:
+          - name: ray-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: fluentbit-config
