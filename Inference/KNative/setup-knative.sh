@@ -1,16 +1,106 @@
-export KNATIVE_OPERATOR_VERSION=v1.15.7
-export KNATIVE_SERVING_VERSION=1.15.2
+#!/usr/bin/env bash
+# File: setup-knative.sh
+# Purpose: Install Knative Eventing core and the Kafka Broker plugin into knative-serving on AKS
+# Dependencies: kubectl configured and connected to the target AKS cluster;
+#               Knative Serving already installed separately (e.g. via setup-kserve-stack.sh)
 
-SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"
-export SCRIPT_DIR
+set -euo pipefail
 
-helm install knative-operator --namespace knative-serving --create-namespace --wait \
-      https://github.com/knative/operator/releases/download/knative-${KNATIVE_OPERATOR_VERSION}/knative-operator-${KNATIVE_OPERATOR_VERSION}.tgz
+KNATIVE_EVENTING_VERSION="v1.14.1"
+KAFKA_BROKER_VERSION="v1.14.1"
+NAMESPACE="knative-serving"
 
-kubectl apply -f ${SCRIPT_DIR}/knative-serving.yaml
+# ---------------------------------------------------------------------------
+# Step 0: Context verification
+# ---------------------------------------------------------------------------
+echo "────────────────────────────────────────────────────────────────────────"
+echo "Current kubectl context: $(kubectl config current-context)"
+echo "────────────────────────────────────────────────────────────────────────"
+read -rp "Is this the correct cluster? Continue? [y/N] " confirm
+[[ "${confirm,,}" == "y" ]] || { echo "Aborted by user."; exit 1; }
 
-echo "Waiting for Knative Serving to be ready ..."
-kubectl wait --for=condition=Available=True --timeout=600s deployment --all -n knative-serving
+# ---------------------------------------------------------------------------
+# Step 1: Ensure namespace exists (do NOT recreate if already present)
+# ---------------------------------------------------------------------------
+if kubectl get namespace "${NAMESPACE}" &>/dev/null; then
+  echo "Namespace '${NAMESPACE}' already exists — skipping creation."
+else
+  echo "Creating namespace '${NAMESPACE}' ..."
+  kubectl create namespace "${NAMESPACE}" \
+    || { echo "ERROR: Failed to create namespace '${NAMESPACE}'. Aborting."; exit 1; }
+fi
 
-echo "Installing Knative Message Dumper ..."
-kubectl apply -f ${SCRIPT_DIR}/message-dumper.yaml -n knative-serving
+# ---------------------------------------------------------------------------
+# Step 2: Knative Eventing CRDs
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 2] Installing Knative Eventing CRDs (${KNATIVE_EVENTING_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_EVENTING_VERSION}/eventing-crds.yaml" \
+  || { echo "ERROR: Failed to apply Knative Eventing CRDs. Aborting."; exit 1; }
+
+echo "Waiting for Eventing CRDs to become Established (60s timeout) ..."
+kubectl wait --for=condition=Established --timeout=60s \
+  crd/brokers.eventing.knative.dev \
+  crd/triggers.eventing.knative.dev \
+  crd/eventtypes.eventing.knative.dev \
+  || { echo "ERROR: Knative Eventing CRDs did not establish within 60s. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Step 3: Knative Eventing core
+# NOTE: eventing-core.yaml targets the knative-eventing namespace by default.
+#       Deployments are patched/checked in that namespace below.
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 3] Installing Knative Eventing core (${KNATIVE_EVENTING_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_EVENTING_VERSION}/eventing-core.yaml" \
+  || { echo "ERROR: Failed to apply Knative Eventing core. Aborting."; exit 1; }
+
+# Determine which namespace the eventing deployments landed in
+_eventing_ns="knative-eventing"
+if ! kubectl get namespace knative-eventing &>/dev/null; then
+  _eventing_ns="${NAMESPACE}"
+fi
+
+echo "Waiting for eventing-controller in ${_eventing_ns} (60s timeout) ..."
+kubectl rollout status deployment/eventing-controller \
+  -n "${_eventing_ns}" --timeout=60s \
+  || { echo "ERROR: eventing-controller did not become Ready within 60s. Aborting."; exit 1; }
+
+echo "Waiting for eventing-webhook in ${_eventing_ns} (60s timeout) ..."
+kubectl rollout status deployment/eventing-webhook \
+  -n "${_eventing_ns}" --timeout=60s \
+  || { echo "ERROR: eventing-webhook did not become Ready within 60s. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Step 4: Knative Kafka Broker plugin — controller
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 4a] Installing Kafka Broker controller (${KAFKA_BROKER_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-${KAFKA_BROKER_VERSION}/eventing-kafka-controller.yaml" \
+  || { echo "ERROR: Failed to apply Kafka Broker controller. Aborting."; exit 1; }
+
+echo "Waiting for kafka-controller in ${_eventing_ns} (60s timeout) ..."
+kubectl rollout status deployment/kafka-controller \
+  -n "${_eventing_ns}" --timeout=60s \
+  || { echo "ERROR: kafka-controller did not become Ready within 60s. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Step 5: Knative Kafka Broker plugin — data-plane
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 4b] Installing Kafka Broker data-plane (${KAFKA_BROKER_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-${KAFKA_BROKER_VERSION}/eventing-kafka-broker.yaml" \
+  || { echo "ERROR: Failed to apply Kafka Broker data-plane. Aborting."; exit 1; }
+
+echo "Waiting for knative-kafka-broker-data-plane in ${_eventing_ns} (60s timeout) ..."
+kubectl rollout status deployment/knative-kafka-broker-data-plane \
+  -n "${_eventing_ns}" --timeout=60s \
+  || { echo "ERROR: knative-kafka-broker-data-plane did not become Ready within 60s. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "Knative Eventing + Kafka Broker plugin installed in knative-serving"

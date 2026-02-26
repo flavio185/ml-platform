@@ -1,21 +1,32 @@
-apiVersion: "serving.kserve.io/v1beta1"
-kind: "InferenceService"
+# File: sklearn-iris.yaml
+# Purpose: KServe InferenceService for the sklearn iris model with Knative Kafka payload logging
+# Dependencies: KServe installed; Knative Broker 'default' Ready in knative-serving;
+#               kafka-broker-ingress Service reachable inside the cluster
+
+# KServe emits CloudEvents of type:
+#   org.kubeflow.serving.inference.request  (on every inbound request)
+#   org.kubeflow.serving.inference.response (on every outbound response)
+# Both events are sent as HTTP POST CloudEvents (CloudEvents spec v1.0) to the logger URL below,
+# which is the Kafka Broker ingress — routing them through Kafka to all subscribed Triggers.
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
 metadata:
-  name: "sklearn-iris"
-  namespace: app-ns
+  name: sklearn-iris
+  namespace: default
 spec:
   predictor:
     model:
       modelFormat:
         name: sklearn
-      storageUri: "gs://kfserving-examples/models/sklearn/1.0/model"
+      storageUri: gs://kfserving-examples/models/sklearn/1.0/model
       resources:
         requests:
-          cpu: "100m"
-          memory: "512Mi"
+          cpu: 100m
+          memory: 256Mi
         limits:
           cpu: "1"
-          memory: "1Gi"
+          memory: 512Mi
     logger:
       mode: all
-      url: http://message-dumper.knative-serving.svc.cluster.local
+      url: http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-serving/default

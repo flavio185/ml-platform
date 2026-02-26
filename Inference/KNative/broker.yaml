@@ -1,0 +1,24 @@
+# File: broker.yaml
+# Purpose: Knative Kafka Broker that receives KServe inference payload CloudEvents
+# Dependencies: kafka-broker-config.yaml applied first; Kafka cluster reachable;
+#               Knative Eventing + Kafka Broker plugin installed (setup-knative.sh)
+
+# SECURITY: mTLS and AuthorizationPolicy intentionally omitted.
+# For production hardening add PeerAuthentication and AuthorizationPolicy.
+
+# Broker ingress URL (use this as the KServe logger URL):
+# http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-serving/default
+
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: default
+  namespace: knative-serving
+  annotations:
+    eventing.knative.dev/broker.class: Kafka
+spec:
+  config:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kafka-broker-config
+    namespace: knative-serving

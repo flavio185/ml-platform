@@ -1,0 +1,155 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: ml-default-payment-project-0-0-6-job1
+  namespace: app-ns
+spec:
+  entrypoint: uv run project-cli full-pipeline
+  runtimeEnvYAML: |
+      working_dir: s3://datamasters2025/raw_packages/ml-default-payment-project-0-0-6.zip
+      pip:
+       - smart-open
+       - boto3
+      env_vars:
+        MLFLOW_TRACKING_URI: http://nginx.mlflow-ns.svc.cluster.local
+  # shutdownAfterJobFinishes specifies whether the RayCluster should be deleted after the RayJob finishes. Default is false.
+  shutdownAfterJobFinishes: true
+
+  # ttlSecondsAfterFinished specifies the number of seconds after which the RayCluster will be deleted after the RayJob finishes.
+  ttlSecondsAfterFinished: 80
+  rayClusterSpec:
+    rayVersion: "2.46.0"
+    headGroupSpec:
+      serviceType: ClusterIP
+      # The `rayStartParams` are used to configure the `ray start` command.
+      # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+      # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+      rayStartParams:
+        metrics-export-port: "8080"
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.46.0
+            ports:
+            - containerPort: 6379
+              name: gcs-server
+              protocol: TCP
+            - containerPort: 8265
+              name: dashboard
+              protocol: TCP
+            - containerPort: 10001
+              name: client
+              protocol: TCP
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"
+            envFrom:
+            - secretRef:
+                name: aws-credentials
+            # Share logs with Fluent Bit
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          # Fluent Bit sidecar
+          - name: fluentbit
+            image: fluent/fluent-bit:3.2.2
+            # Get Kubernetes metadata via downward API
+            env:
+            - name: POD_LABELS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['ray.io/cluster']
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # These resource requests for Fluent Bit should be sufficient in production.
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+          # Log and config volumes
+          volumes:
+          - name: ray-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: fluentbit-config
+    workerGroupSpecs:
+    - groupName: workers
+      minReplicas: 1
+      maxReplicas: 5
+      rayStartParams:
+        metrics-export-port: "8080"
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.46.0
+            ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"
+            envFrom:
+            - secretRef:
+                name: aws-credentials
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+          # Fluent Bit sidecar
+          - name: fluentbit
+            image: fluent/fluent-bit:3.2.2
+            env:
+            - name: POD_LABELS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['ray.io/cluster']
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+          volumes:
+          - name: ray-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: fluentbit-config
