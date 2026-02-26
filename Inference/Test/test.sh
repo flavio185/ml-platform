@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # File: test.sh
 # Purpose: Send inference requests and verify CloudEvents flow through Kafka to consumer services
-# Dependencies: sklearn-iris InferenceService Ready in namespace default;
+# Dependencies: sklearn-iris InferenceService Ready in namespace app-ns;
 #               consumer Deployments running (payload-archiver, drift-detector, retraining-trigger);
 #               Knative Broker + Triggers configured; jq installed
 
@@ -12,21 +12,29 @@ INFERENCE_SERVICE="sklearn-iris"
 INPUT='{"instances": [[6.8, 2.8, 4.8, 1.4]]}'
 
 # ---------------------------------------------------------------------------
-# Step 1: Get InferenceService URL dynamically
+# Step 1: Resolve Istio IngressGateway + InferenceService hostname
 # ---------------------------------------------------------------------------
-echo ">>> Fetching InferenceService URL for '${INFERENCE_SERVICE}' in namespace '${NAMESPACE}' ..."
-PREDICT_URL=$(kubectl get inferenceservice "${INFERENCE_SERVICE}" \
+# The Knative URL (e.g. http://sklearn-iris.app-ns.example.com) does not
+# resolve in external DNS. Requests must go through the Istio IngressGateway
+# IP with a Host header, which is how Knative/Istio routes traffic internally.
+INGRESS_HOST=$(kubectl get svc istio-ingressgateway -n istio-system \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+INGRESS_PORT=$(kubectl get svc istio-ingressgateway -n istio-system \
+  -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+SERVICE_HOSTNAME=$(kubectl get inferenceservice "${INFERENCE_SERVICE}" \
   -n "${NAMESPACE}" \
-  -o jsonpath='{.status.url}')
+  -o jsonpath='{.status.url}' | cut -d'/' -f3)
 
-if [[ -z "${PREDICT_URL}" ]]; then
-  echo "ERROR: Could not retrieve URL for InferenceService '${INFERENCE_SERVICE}'."
+if [[ -z "${INGRESS_HOST}" || -z "${SERVICE_HOSTNAME}" ]]; then
+  echo "ERROR: Could not resolve IngressGateway IP or InferenceService hostname."
   echo "       Verify the service is Ready: kubectl get inferenceservice -n ${NAMESPACE}"
   exit 1
 fi
 
-PREDICT_URL="${PREDICT_URL}/v1/models/${INFERENCE_SERVICE}:predict"
-echo "Prediction endpoint: ${PREDICT_URL}"
+PREDICT_URL="http://${INGRESS_HOST}:${INGRESS_PORT}/v1/models/${INFERENCE_SERVICE}:predict"
+echo "Ingress:  ${INGRESS_HOST}:${INGRESS_PORT}"
+echo "Hostname: ${SERVICE_HOSTNAME}"
+echo "Endpoint: ${PREDICT_URL}"
 
 # ---------------------------------------------------------------------------
 # Step 2: Send 3 inference POST requests
@@ -36,7 +44,8 @@ echo ">>> Sending 3 inference requests ..."
 for i in 1 2 3; do
   echo ""
   echo "  --- Request ${i} ---"
-  curl -sf -X POST "${PREDICT_URL}" \
+  curl -s -X POST "${PREDICT_URL}" \
+    -H "Host: ${SERVICE_HOSTNAME}" \
     -H "Content-Type: application/json" \
     -d "${INPUT}" | jq .
 done
