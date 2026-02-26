@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KNATIVE_NS="knative-serving"
-APP_NS="default"
+APP_NS="app-ns"
 
 # ---------------------------------------------------------------------------
 # Step 1: Context confirmation

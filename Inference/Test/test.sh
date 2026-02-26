@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-NAMESPACE="default"
+NAMESPACE="app-ns"
 INFERENCE_SERVICE="sklearn-iris"
 INPUT='{"instances": [[6.8, 2.8, 4.8, 1.4]]}'
 

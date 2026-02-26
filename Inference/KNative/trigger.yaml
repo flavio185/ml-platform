@@ -17,7 +17,7 @@ metadata:
 spec:
   broker: default
   subscriber:
-    uri: http://payload-archiver.default.svc.cluster.local
+    uri: http://payload-archiver.app-ns.svc.cluster.local
 
 ---
 # drift-detector-trigger: filters on inference REQUEST events only.
@@ -33,7 +33,7 @@ spec:
     attributes:
       type: org.kubeflow.serving.inference.request
   subscriber:
-    uri: http://drift-detector.default.svc.cluster.local
+    uri: http://drift-detector.app-ns.svc.cluster.local
 
 ---
 # retraining-trigger: receives drift-detected events emitted by the drift-detector service.
@@ -117,4 +117,4 @@ spec:
     attributes:
       type: mlops.drift.detected
   subscriber:
-    uri: http://retraining-trigger.default.svc.cluster.local
+    uri: http://retraining-trigger.app-ns.svc.cluster.local
