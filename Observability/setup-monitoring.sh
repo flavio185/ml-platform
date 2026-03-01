@@ -16,10 +16,6 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-# Remove stale monitoring CRDs to avoid field-manager conflicts with Helm
-# (safe on fresh setup; on re-runs Helm will recreate them)
-kubectl get crds -o name 2>/dev/null | grep monitoring.coreos.com | xargs -r kubectl delete 2>/dev/null || true
-
 # Install kube-prometheus-stack (Prometheus + Grafana + Alertmanager)
 helm upgrade --install "$RELEASE_NAME" prometheus-community/kube-prometheus-stack \
   -n "$NAMESPACE" --create-namespace \

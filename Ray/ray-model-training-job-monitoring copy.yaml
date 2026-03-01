@@ -1,0 +1,39 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: ray-simple-job
+  namespace: app-ns
+spec:
+  entrypoint: python -c "import ray; print('Hello from Ray!'); print(f'Available resources: {ray.available_resources()}')"
+  shutdownAfterJobFinishes: true
+  ttlSecondsAfterFinished: 60
+  rayClusterSpec:
+    rayVersion: "2.46.0"
+    headGroupSpec:
+      serviceType: ClusterIP
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"
+    workerGroupSpecs:
+    - groupName: workers
+      minReplicas: 1
+      maxReplicas: 2
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.46.0
+            resources:
+              limits:
+                cpu: "1"
+              requests:
+                cpu: "200m"

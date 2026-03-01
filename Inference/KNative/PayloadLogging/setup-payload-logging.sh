@@ -11,15 +11,6 @@ KNATIVE_NS="knative-serving"
 APP_NS="app-ns"
 
 # ---------------------------------------------------------------------------
-# Step 1: Context confirmation
-# ---------------------------------------------------------------------------
-echo "────────────────────────────────────────────────────────────────────────"
-echo "Current kubectl context: $(kubectl config current-context)"
-echo "────────────────────────────────────────────────────────────────────────"
-read -rp "Continue with this context? [y/N] " confirm
-[[ "${confirm,,}" == "y" ]] || { echo "Aborted."; exit 1; }
-
-# ---------------------------------------------------------------------------
 # Step 2: Ensure namespace default exists
 # ---------------------------------------------------------------------------
 echo ""
@@ -81,10 +72,10 @@ echo ">>> [Step 6] Applying trigger.yaml ..."
 kubectl apply -f "${SCRIPT_DIR}/../trigger.yaml" \
   || { echo "ERROR: Step 6 failed — trigger.yaml. Aborting."; exit 1; }
 
-echo "Waiting for all Triggers to be Ready in ${KNATIVE_NS} (60s timeout) ..."
+echo "Waiting for all Triggers to be Ready in ${KNATIVE_NS} (300s timeout — may need to scale a node) ..."
 kubectl wait --for=condition=Ready trigger --all \
   -n "${KNATIVE_NS}" \
-  --timeout=60s \
+  --timeout=300s \
   || { echo "ERROR: Step 6 failed — one or more Triggers not Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------

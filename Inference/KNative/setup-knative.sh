@@ -1,23 +1,14 @@
 #!/usr/bin/env bash
 # File: setup-knative.sh
-# Purpose: Install Knative Eventing core and the Kafka Broker plugin into knative-serving on AKS
+# Purpose: Install Knative Serving (with net-istio) + Knative Eventing + Kafka Broker plugin
 # Dependencies: kubectl configured and connected to the target AKS cluster;
-#               Knative Serving already installed separately (e.g. via setup-kserve-stack.sh)
+#               Istio already installed (Inference/Istio/setup-istio.sh)
 
 set -euo pipefail
 
-KNATIVE_EVENTING_VERSION="v1.14.1"
+KNATIVE_VERSION="v1.14.1"
 KAFKA_BROKER_VERSION="v1.14.1"
 NAMESPACE="knative-serving"
-
-# ---------------------------------------------------------------------------
-# Step 0: Context verification
-# ---------------------------------------------------------------------------
-echo "────────────────────────────────────────────────────────────────────────"
-echo "Current kubectl context: $(kubectl config current-context)"
-echo "────────────────────────────────────────────────────────────────────────"
-read -rp "Is this the correct cluster? Continue? [y/N] " confirm
-[[ "${confirm,,}" == "y" ]] || { echo "Aborted by user."; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Step 1: Ensure namespace exists (do NOT recreate if already present)
@@ -31,12 +22,59 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: Knative Eventing CRDs
+# Step 2: Knative Serving CRDs
 # ---------------------------------------------------------------------------
 echo ""
-echo ">>> [Step 2] Installing Knative Eventing CRDs (${KNATIVE_EVENTING_VERSION}) ..."
+echo ">>> [Step 2] Installing Knative Serving CRDs (${KNATIVE_VERSION}) ..."
 kubectl apply -f \
-  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_EVENTING_VERSION}/eventing-crds.yaml" \
+  "https://github.com/knative/serving/releases/download/knative-${KNATIVE_VERSION}/serving-crds.yaml" \
+  || { echo "ERROR: Failed to apply Knative Serving CRDs. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Step 3: Knative Serving core
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 3] Installing Knative Serving core (${KNATIVE_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative/serving/releases/download/knative-${KNATIVE_VERSION}/serving-core.yaml" \
+  || { echo "ERROR: Failed to apply Knative Serving core. Aborting."; exit 1; }
+
+echo "Waiting for serving deployments in ${NAMESPACE} (120s timeout) ..."
+for deploy in controller webhook activator; do
+  kubectl rollout status deployment/${deploy} -n "${NAMESPACE}" --timeout=120s \
+    || { echo "ERROR: ${deploy} did not become Ready. Aborting."; exit 1; }
+done
+
+# ---------------------------------------------------------------------------
+# Step 4: net-istio (Knative Serving ingress via Istio)
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 4] Installing net-istio (${KNATIVE_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative/net-istio/releases/download/knative-${KNATIVE_VERSION}/net-istio.yaml" \
+  || { echo "ERROR: Failed to apply net-istio. Aborting."; exit 1; }
+
+# Configure Istio as the ingress class
+kubectl patch configmap config-network \
+  -n "${NAMESPACE}" \
+  --type merge \
+  -p '{"data":{"ingress-class":"istio.ingress.networking.knative.dev"}}' \
+  || { echo "ERROR: Failed to patch config-network. Aborting."; exit 1; }
+
+# Set a wildcard domain so InferenceService URLs resolve via the IngressGateway IP
+kubectl patch configmap config-domain \
+  -n "${NAMESPACE}" \
+  --type merge \
+  -p '{"data":{"example.com":""}}' \
+  || { echo "ERROR: Failed to patch config-domain. Aborting."; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Step 5: Knative Eventing CRDs
+# ---------------------------------------------------------------------------
+echo ""
+echo ">>> [Step 5] Installing Knative Eventing CRDs (${KNATIVE_VERSION}) ..."
+kubectl apply -f \
+  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_VERSION}/eventing-crds.yaml" \
   || { echo "ERROR: Failed to apply Knative Eventing CRDs. Aborting."; exit 1; }
 
 echo "Waiting for Eventing CRDs to become Established (60s timeout) ..."
@@ -47,17 +85,14 @@ kubectl wait --for=condition=Established --timeout=60s \
   || { echo "ERROR: Knative Eventing CRDs did not establish within 60s. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 3: Knative Eventing core
-# NOTE: eventing-core.yaml targets the knative-eventing namespace by default.
-#       Deployments are patched/checked in that namespace below.
+# Step 6: Knative Eventing core
 # ---------------------------------------------------------------------------
 echo ""
-echo ">>> [Step 3] Installing Knative Eventing core (${KNATIVE_EVENTING_VERSION}) ..."
+echo ">>> [Step 6] Installing Knative Eventing core (${KNATIVE_VERSION}) ..."
 kubectl apply -f \
-  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_EVENTING_VERSION}/eventing-core.yaml" \
+  "https://github.com/knative/eventing/releases/download/knative-${KNATIVE_VERSION}/eventing-core.yaml" \
   || { echo "ERROR: Failed to apply Knative Eventing core. Aborting."; exit 1; }
 
-# Determine which namespace the eventing deployments landed in
 _eventing_ns="knative-eventing"
 if ! kubectl get namespace knative-eventing &>/dev/null; then
   _eventing_ns="${NAMESPACE}"
@@ -66,18 +101,18 @@ fi
 echo "Waiting for eventing-controller in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/eventing-controller \
   -n "${_eventing_ns}" --timeout=60s \
-  || { echo "ERROR: eventing-controller did not become Ready within 60s. Aborting."; exit 1; }
+  || { echo "ERROR: eventing-controller did not become Ready. Aborting."; exit 1; }
 
 echo "Waiting for eventing-webhook in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/eventing-webhook \
   -n "${_eventing_ns}" --timeout=60s \
-  || { echo "ERROR: eventing-webhook did not become Ready within 60s. Aborting."; exit 1; }
+  || { echo "ERROR: eventing-webhook did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 4: Knative Kafka Broker plugin — controller
+# Step 7: Knative Kafka Broker plugin — controller
 # ---------------------------------------------------------------------------
 echo ""
-echo ">>> [Step 4a] Installing Kafka Broker controller (${KAFKA_BROKER_VERSION}) ..."
+echo ">>> [Step 7a] Installing Kafka Broker controller (${KAFKA_BROKER_VERSION}) ..."
 kubectl apply -f \
   "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-${KAFKA_BROKER_VERSION}/eventing-kafka-controller.yaml" \
   || { echo "ERROR: Failed to apply Kafka Broker controller. Aborting."; exit 1; }
@@ -85,22 +120,22 @@ kubectl apply -f \
 echo "Waiting for kafka-controller in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/kafka-controller \
   -n "${_eventing_ns}" --timeout=60s \
-  || { echo "ERROR: kafka-controller did not become Ready within 60s. Aborting."; exit 1; }
+  || { echo "ERROR: kafka-controller did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 5: Knative Kafka Broker plugin — data-plane
+# Step 8: Knative Kafka Broker plugin — data-plane
 # ---------------------------------------------------------------------------
 echo ""
-echo ">>> [Step 4b] Installing Kafka Broker data-plane (${KAFKA_BROKER_VERSION}) ..."
+echo ">>> [Step 7b] Installing Kafka Broker data-plane (${KAFKA_BROKER_VERSION}) ..."
 kubectl apply -f \
   "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-${KAFKA_BROKER_VERSION}/eventing-kafka-broker.yaml" \
   || { echo "ERROR: Failed to apply Kafka Broker data-plane. Aborting."; exit 1; }
 
-echo "Waiting for knative-kafka-broker-data-plane in ${_eventing_ns} (60s timeout) ..."
-kubectl rollout status deployment/knative-kafka-broker-data-plane \
-  -n "${_eventing_ns}" --timeout=60s \
-  || { echo "ERROR: knative-kafka-broker-data-plane did not become Ready within 60s. Aborting."; exit 1; }
+echo "Waiting for kafka-broker-receiver in ${_eventing_ns} (60s timeout) ..."
+kubectl rollout status deployment/kafka-broker-receiver \
+  -n "${_eventing_ns}" --timeout=180s \
+  || { echo "ERROR: kafka-broker-receiver did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "Knative Eventing + Kafka Broker plugin installed in knative-serving"
+echo "Knative Serving + Eventing + Kafka Broker plugin installed successfully."

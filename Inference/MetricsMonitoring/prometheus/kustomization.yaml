@@ -1,8 +1,0 @@
-namePrefix: kserve-
-namespace: kserve-monitoring
-resources:
-- clusterrole.yaml
-- clusterrolebinding.yaml
-- prometheus.yaml
-- serviceaccount.yaml
-- kserve-service-monitor.yaml

@@ -41,7 +41,7 @@ echo "Endpoint: ${PREDICT_URL}"
 # ---------------------------------------------------------------------------
 echo ""
 echo ">>> Sending 3 inference requests ..."
-for i in 1 2 3; do
+for i in 1 2 3 4 5 6 7 8 9 ; do
   echo ""
   echo "  --- Request ${i} ---"
   curl -s -X POST "${PREDICT_URL}" \
