@@ -100,12 +100,12 @@ fi
 
 echo "Waiting for eventing-controller in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/eventing-controller \
-  -n "${_eventing_ns}" --timeout=60s \
+  -n "${_eventing_ns}" --timeout=300s \
   || { echo "ERROR: eventing-controller did not become Ready. Aborting."; exit 1; }
 
 echo "Waiting for eventing-webhook in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/eventing-webhook \
-  -n "${_eventing_ns}" --timeout=60s \
+  -n "${_eventing_ns}" --timeout=300s \
   || { echo "ERROR: eventing-webhook did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
@@ -119,7 +119,7 @@ kubectl apply -f \
 
 echo "Waiting for kafka-controller in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/kafka-controller \
-  -n "${_eventing_ns}" --timeout=60s \
+  -n "${_eventing_ns}" --timeout=300s \
   || { echo "ERROR: kafka-controller did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ kubectl apply -f \
 
 echo "Waiting for kafka-broker-receiver in ${_eventing_ns} (60s timeout) ..."
 kubectl rollout status deployment/kafka-broker-receiver \
-  -n "${_eventing_ns}" --timeout=180s \
+  -n "${_eventing_ns}" --timeout=300s \
   || { echo "ERROR: kafka-broker-receiver did not become Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------

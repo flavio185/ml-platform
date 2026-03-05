@@ -9,3 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "Applying KServe ServiceMonitor to monitoring namespace..."
 kubectl apply -f "${SCRIPT_DIR}/kserve-service-monitor.yaml"
 echo "KServe ServiceMonitor applied successfully."
+
+kubectl apply -f "${SCRIPT_DIR}/kserve-dashboard-configmap.yaml"
+echo "KServe Grafana dashboard ConfigMap applied."
