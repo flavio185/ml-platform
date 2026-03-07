@@ -1,0 +1,139 @@
+name: Deploy Model to KServe
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_uri:
+        description: "Model storage URI (e.g. s3://bucket/model or gs://bucket/model)"
+        required: true
+      model_name:
+        description: "KServe InferenceService name"
+        required: true
+        default: "sklearn-iris"
+      model_format:
+        description: "Model format (sklearn, tensorflow, pytorch, onnx, xgboost)"
+        required: true
+        default: "sklearn"
+      enable_payload_logging:
+        description: "Enable Knative payload logging via Kafka"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  NAMESPACE: app-ns
+
+jobs:
+  deploy:
+    name: Deploy InferenceService to KServe
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "latest"
+
+      - name: Authenticate to AKS
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Build InferenceService manifest
+        env:
+          MODEL_NAME: ${{ inputs.model_name }}
+          MODEL_FORMAT: ${{ inputs.model_format }}
+          MODEL_URI: ${{ inputs.model_uri }}
+          ENABLE_PAYLOAD_LOGGING: ${{ inputs.enable_payload_logging }}
+        run: |
+          LOGGER_BLOCK=""
+          if [[ "${ENABLE_PAYLOAD_LOGGING}" == "true" ]]; then
+            LOGGER_BLOCK=$(cat <<'YAML'
+              logger:
+                mode: all
+                url: http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-serving/default
+          YAML
+            )
+          fi
+
+          cat > /tmp/inferenceservice.yaml <<YAML
+          apiVersion: serving.kserve.io/v1beta1
+          kind: InferenceService
+          metadata:
+            name: ${MODEL_NAME}
+            namespace: ${{ env.NAMESPACE }}
+          spec:
+            predictor:
+              model:
+                modelFormat:
+                  name: ${MODEL_FORMAT}
+                storageUri: ${MODEL_URI}
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: "1"
+                    memory: 512Mi
+          ${LOGGER_BLOCK}
+          YAML
+
+          echo "=== Generated manifest ==="
+          cat /tmp/inferenceservice.yaml
+
+      - name: Apply InferenceService
+        run: |
+          kubectl apply -f /tmp/inferenceservice.yaml
+
+      - name: Wait for InferenceService to be Ready
+        timeout-minutes: 15
+        run: |
+          echo "Waiting for InferenceService ${{ inputs.model_name }} to become Ready..."
+          kubectl wait inferenceservice ${{ inputs.model_name }} \
+            -n ${{ env.NAMESPACE }} \
+            --for=condition=Ready \
+            --timeout=900s
+
+      - name: Print InferenceService URL
+        run: |
+          URL=$(kubectl get inferenceservice ${{ inputs.model_name }} \
+            -n ${{ env.NAMESPACE }} \
+            -o jsonpath='{.status.url}')
+          echo "InferenceService is ready at: ${URL}"
+          echo "MODEL_URL=${URL}" >> $GITHUB_OUTPUT
+        id: get_url
+
+      - name: Smoke test — send one inference request
+        env:
+          SERVICE_URL: ${{ steps.get_url.outputs.MODEL_URL }}
+        run: |
+          INGRESS_HOST=$(kubectl get svc istio-ingressgateway -n istio-system \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          INGRESS_PORT=$(kubectl get svc istio-ingressgateway -n istio-system \
+            -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+          SERVICE_HOSTNAME=$(echo "${SERVICE_URL}" | cut -d'/' -f3)
+
+          echo "Sending smoke-test request to http://${INGRESS_HOST}:${INGRESS_PORT}/v1/models/${{ inputs.model_name }}:predict"
+          RESPONSE=$(curl -sf \
+            -X POST "http://${INGRESS_HOST}:${INGRESS_PORT}/v1/models/${{ inputs.model_name }}:predict" \
+            -H "Host: ${SERVICE_HOSTNAME}" \
+            -H "Content-Type: application/json" \
+            -d '{"instances": [[6.8, 2.8, 4.8, 1.4]]}')
+
+          echo "Response: ${RESPONSE}"
+          echo "${RESPONSE}" | python3 -c "
+          import sys, json
+          r = json.load(sys.stdin)
+          assert 'predictions' in r, f'Unexpected response: {r}'
+          print('Smoke test PASSED')
+          "

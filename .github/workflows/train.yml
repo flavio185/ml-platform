@@ -1,0 +1,90 @@
+name: Train Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: "Model version tag (e.g. 0.1.0)"
+        required: true
+        default: "0.1.0"
+      mlflow_experiment:
+        description: "MLflow experiment name"
+        required: false
+        default: "default"
+
+env:
+  NAMESPACE: app-ns
+
+jobs:
+  train:
+    name: Submit RayJob for model training
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "latest"
+
+      - name: Authenticate to AKS
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Inject S3 credentials into RayJob manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+          MLFLOW_EXPERIMENT: ${{ inputs.mlflow_experiment }}
+        run: |
+          sed \
+            -e "s|AWS_ACCESS_KEY_ID:|AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}|g" \
+            -e "s|AWS_SECRET_ACCESS_KEY:|AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}|g" \
+            -e "s|# MLFLOW_TRACKING_URI:.*|MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}|g" \
+            -e "s|refs/tags/.*\.zip|refs/tags/${MODEL_VERSION}.zip|g" \
+            Ray/ray-chart/ray-model-training-job.yaml > /tmp/rayjob.yaml
+
+      - name: Delete previous RayJob if exists
+        run: |
+          kubectl delete rayjob model-training-job -n ${{ env.NAMESPACE }} --ignore-not-found=true
+
+      - name: Submit RayJob
+        run: |
+          kubectl apply -f /tmp/rayjob.yaml
+
+      - name: Wait for RayJob to complete
+        timeout-minutes: 60
+        run: |
+          echo "Waiting for RayJob model-training-job to complete..."
+          kubectl wait rayjob model-training-job \
+            -n ${{ env.NAMESPACE }} \
+            --for=condition=Succeeded \
+            --timeout=3600s
+
+      - name: Print RayJob logs (head node)
+        if: always()
+        run: |
+          HEAD_POD=$(kubectl get pods -n ${{ env.NAMESPACE }} \
+            -l ray.io/node-type=head,ray.io/cluster=model-training-job \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [[ -n "${HEAD_POD}" ]]; then
+            echo "=== Ray head logs ==="
+            kubectl logs "${HEAD_POD}" -n ${{ env.NAMESPACE }} -c ray-head --tail=200 || true
+          fi
+
+      - name: Clean up RayJob
+        if: always()
+        run: |
+          kubectl delete rayjob model-training-job -n ${{ env.NAMESPACE }} --ignore-not-found=true
