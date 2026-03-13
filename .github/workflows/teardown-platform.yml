@@ -1,0 +1,44 @@
+name: Teardown ML Platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" to confirm deletion of the AKS cluster (irreversible)'
+        required: true
+        default: 'no'
+      delete_resource_group:
+        description: 'Also delete the resource group? (yes/no)'
+        required: true
+        default: 'no'
+
+jobs:
+  teardown-platform:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'yes' }}
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Delete AKS cluster
+        run: |
+          echo "Deleting AKS cluster ${{ vars.AKS_CLUSTER_NAME }} in ${{ vars.RESOURCE_GROUP }}..."
+          az aks delete \
+            --name "${{ vars.AKS_CLUSTER_NAME }}" \
+            --resource-group "${{ vars.RESOURCE_GROUP }}" \
+            --yes \
+            --no-wait
+          echo "AKS cluster deletion initiated."
+
+      - name: Delete resource group
+        if: ${{ github.event.inputs.delete_resource_group == 'yes' }}
+        run: |
+          echo "Deleting resource group ${{ vars.RESOURCE_GROUP }}..."
+          az group delete \
+            --name "${{ vars.RESOURCE_GROUP }}" \
+            --yes \
+            --no-wait
+          echo "Resource group deletion initiated."
