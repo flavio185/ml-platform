@@ -1,0 +1,123 @@
+# File: consumers.yaml
+# Purpose: Stub consumer Deployments + ClusterIP Services for the CloudEvent payload logging pipeline
+# Dependencies: namespace default must exist;
+#               trigger.yaml will route events here once Broker is Ready
+
+# SECURITY: mTLS and AuthorizationPolicy intentionally omitted.
+# For production hardening add PeerAuthentication and AuthorizationPolicy.
+
+---
+# payload-archiver: replace with a service that writes CloudEvent payloads to Azure Blob Storage
+# (e.g. a Python FastAPI app using azure-storage-blob, keyed by model + timestamp)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payload-archiver
+  namespace: app-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payload-archiver
+  template:
+    metadata:
+      labels:
+        app: payload-archiver
+    spec:
+      containers:
+      - name: payload-archiver
+        image: docker.io/mendhak/http-https-echo:33
+        ports:
+        - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payload-archiver
+  namespace: app-ns
+spec:
+  type: ClusterIP
+  selector:
+    app: payload-archiver
+  ports:
+  - port: 80
+    targetPort: 8080
+
+---
+# drift-detector: replace with Evidently AI or a custom drift detection service
+# (compare incoming feature distributions against a stored training baseline;
+#  emit a CloudEvent of type mlops.drift.detected to the Broker when PSI/KS threshold exceeded)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drift-detector
+  namespace: app-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drift-detector
+  template:
+    metadata:
+      labels:
+        app: drift-detector
+    spec:
+      containers:
+      - name: drift-detector
+        image: docker.io/mendhak/http-https-echo:33
+        ports:
+        - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drift-detector
+  namespace: app-ns
+spec:
+  type: ClusterIP
+  selector:
+    app: drift-detector
+  ports:
+  - port: 80
+    targetPort: 8080
+
+---
+# retraining-trigger: replace with an Argo Workflows webhook client
+# (receives mlops.drift.detected CloudEvents and POSTs to the Argo Events webhook
+#  to submit a retraining Workflow that creates a RayJob in app-ns)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retraining-trigger
+  namespace: app-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: retraining-trigger
+  template:
+    metadata:
+      labels:
+        app: retraining-trigger
+    spec:
+      containers:
+      - name: retraining-trigger
+        image: docker.io/mendhak/http-https-echo:33
+        ports:
+        - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retraining-trigger
+  namespace: app-ns
+spec:
+  type: ClusterIP
+  selector:
+    app: retraining-trigger
+  ports:
+  - port: 80
+    targetPort: 8080

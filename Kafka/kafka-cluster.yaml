@@ -1,0 +1,53 @@
+# File: kafka-cluster.yaml
+# Purpose: Single-node Kafka cluster via Strimzi in KRaft mode — matches the bootstrap address
+#          expected by Inference/KNative/kafka-broker-config.yaml
+#
+# Resulting bootstrap service (created automatically by Strimzi):
+#   kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+#
+# KRaft mode: ZooKeeper was removed in Kafka 4.0. A single KafkaNodePool
+# with combined controller+broker roles replaces the separate zookeeper spec.
+
+---
+# Combined controller+broker node (single replica matches replication.factor: 1)
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-cluster
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: ephemeral
+
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: kafka-cluster
+  namespace: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 4.1.1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

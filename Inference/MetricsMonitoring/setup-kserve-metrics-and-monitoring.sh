@@ -1,7 +1,14 @@
-SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"
-export SCRIPT_DIR
+#!/usr/bin/env bash
+set -euo pipefail
 
-kubectl apply -k ${SCRIPT_DIR}/prometheus-operator
-kubectl wait --for condition=established --timeout=120s crd/prometheuses.monitoring.coreos.com
-kubectl wait --for condition=established --timeout=120s crd/servicemonitors.monitoring.coreos.com
-kubectl apply -k ${SCRIPT_DIR}/prometheus
+# Aplica o ServiceMonitor do KServe no Prometheus já existente (kube-prometheus-stack no namespace monitoring).
+# Não instala um Prometheus Operator separado — reutiliza o stack de Observability.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "Applying KServe ServiceMonitor to monitoring namespace..."
+kubectl apply -f "${SCRIPT_DIR}/kserve-service-monitor.yaml"
+echo "KServe ServiceMonitor applied successfully."
+
+kubectl apply -f "${SCRIPT_DIR}/kserve-dashboard-configmap.yaml"
+echo "KServe Grafana dashboard ConfigMap applied."

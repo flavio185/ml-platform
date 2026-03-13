@@ -10,7 +10,6 @@ fi
 RESOURCE_GROUP="MLProjects"
 CLUSTER_NAME="aks-cluster-datamaster"
 LOCATION="eastus"
-KUBERNETES_VERSION="1.33.2"
 NODE_SIZE="Standard_DS2_v2"
 NODE_COUNT=3
 OUTPUT_FILE="az_aks_output.log"

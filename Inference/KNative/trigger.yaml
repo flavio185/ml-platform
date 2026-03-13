@@ -1,0 +1,120 @@
+# File: trigger.yaml
+# Purpose: Route CloudEvents from the Knative Broker to payload logging consumer services
+# Dependencies: broker.yaml applied first (Broker 'default' must be Ready);
+#               consumers.yaml applied first (consumer Services must be Running in namespace default)
+
+# SECURITY: mTLS and AuthorizationPolicy intentionally omitted.
+# For production hardening add PeerAuthentication and AuthorizationPolicy.
+
+---
+# payload-archiver-trigger: receives ALL events (request + response) — no filter.
+# Sink archives every inference payload for audit, replay, and dataset reconstruction.
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: payload-archiver-trigger
+  namespace: knative-serving
+spec:
+  broker: default
+  subscriber:
+    uri: http://payload-archiver.app-ns.svc.cluster.local
+
+---
+# drift-detector-trigger: filters on inference REQUEST events only.
+# Sink compares feature distributions against the training baseline to detect covariate drift.
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: drift-detector-trigger
+  namespace: knative-serving
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: org.kubeflow.serving.inference.request
+  subscriber:
+    uri: http://drift-detector.app-ns.svc.cluster.local
+
+---
+# retraining-trigger: receives drift-detected events emitted by the drift-detector service.
+# Sink launches a model retraining job.
+#
+# TODO (production): Replace the stub subscriber with an Argo Workflows EventSource + Sensor:
+#
+# --- EventSource ---
+# apiVersion: argoproj.io/v1alpha1
+# kind: EventSource
+# metadata:
+#   name: drift-detected-source
+#   namespace: argo-events
+# spec:
+#   webhook:
+#     drift-detected:
+#       port: "12000"
+#       endpoint: /drift-detected
+#       method: POST
+#
+# --- Sensor ---
+# apiVersion: argoproj.io/v1alpha1
+# kind: Sensor
+# metadata:
+#   name: retraining-sensor
+#   namespace: argo-events
+# spec:
+#   dependencies:
+#   - name: drift-event
+#     eventSourceName: drift-detected-source
+#     eventName: drift-detected
+#   triggers:
+#   - template:
+#       name: retraining-workflow
+#       argoWorkflow:
+#         group: argoproj.io
+#         version: v1alpha1
+#         resource: workflows
+#         operation: submit
+#         source:
+#           resource:
+#             apiVersion: argoproj.io/v1alpha1
+#             kind: Workflow
+#             metadata:
+#               generateName: retraining-
+#             spec:
+#               entrypoint: retraining
+#               serviceAccountName: rayjob-creator-sa
+#               templates:
+#               - name: retraining
+#                 resource:
+#                   action: apply
+#                   manifest: |
+#                     apiVersion: ray.io/v1
+#                     kind: RayJob
+#                     metadata:
+#                       generateName: retraining-
+#                       namespace: app-ns
+#                     spec:
+#                       entrypoint: uv run project-cli training-pipeline
+#                       shutdownAfterJobFinishes: true
+#                       ttlSecondsAfterFinished: 80
+#                       rayClusterSpec:
+#                         rayVersion: "2.46.0"
+#                         headGroupSpec:
+#                           rayStartParams:
+#                             metrics-export-port: "8080"
+#                           template:
+#                             spec:
+#                               containers:
+#                               - name: ray-head
+#                                 image: rayproject/ray:2.46.0
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: retraining-trigger
+  namespace: knative-serving
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: mlops.drift.detected
+  subscriber:
+    uri: http://retraining-trigger.app-ns.svc.cluster.local

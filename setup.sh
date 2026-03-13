@@ -4,6 +4,18 @@ sleep 30
 AKS/aks_cluster_manager.sh getcreds
 export KUBECONFIG=$HOME/.kube/config
 
+# Create AWS credentials secret in the app namespace
+# get aws credentials from .env file
+source .env
+
+app-ns/setup-app-ns.sh
+
+# Setup Monitoring (Prometheus + Grafana)
+echo "🚀 Setting up Monitoring"
+echo "-----------------------------------"
+#
+Observability/setup-monitoring.sh
+
 sleep 5
 # Setup Ray
 echo "🚀 Setting up Ray"
@@ -22,10 +34,3 @@ sleep 30
 # Setup KServe
 Inference/setup-kserve-stack.sh
 sleep 30
-
-
-# Create AWS credentials secret in the app namespace
-# get aws credentials from .env file
-source .env
-
-app-ns/setup-app-ns.sh

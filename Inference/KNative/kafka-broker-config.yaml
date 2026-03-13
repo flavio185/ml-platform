@@ -1,0 +1,34 @@
+# File: kafka-broker-config.yaml
+# Purpose: Configure the Kafka backend for the Knative Broker — Secret, ConfigMap, KafkaBrokerConfig
+# Dependencies: setup-knative.sh must have run successfully; namespace knative-serving must exist;
+#               a Kafka cluster must be reachable at the address encoded in bootstrap.servers
+
+---
+# KAFKA: replace bootstrap.servers with your actual Kafka bootstrap.
+# For Azure Event Hubs use SASL_SSL endpoint and add sasl.jaas.config + security.protocol
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-broker-secret
+  namespace: knative-serving
+type: Opaque
+data:
+  # Plaintext: kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+  # Regenerate with: echo -n "kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092" | base64
+  bootstrap.servers: a2Fma2EtY2x1c3Rlci1rYWZrYS1ib290c3RyYXAua2Fma2Euc3ZjLmNsdXN0ZXIubG9jYWw6OTA5Mg==
+
+---
+# Adjust replication.factor to match your Kafka cluster's broker count
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-broker-config
+  namespace: knative-serving
+data:
+  bootstrap.servers: kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+  default.topic.partitions: "10"
+  default.topic.replication.factor: "1"
+
+# Note: the Kafka Broker plugin does not expose a KafkaBrokerConfig CRD.
+# Bootstrap connectivity is configured via the ConfigMap above, referenced by the Broker spec.config.
+# The Secret above can be referenced in future per-broker auth config via spec.delivery.deadLetterSink or custom controllers.
