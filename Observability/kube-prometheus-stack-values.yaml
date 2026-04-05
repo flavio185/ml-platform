@@ -4,6 +4,10 @@
 
 prometheus:
   prometheusSpec:
+    # Discover ServiceMonitors from ALL namespaces (not just the helm release namespace).
+    # Required for KServe, KubeRay, and MLflow metrics to be scraped.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
     resources:
       requests:
         cpu: "500m"

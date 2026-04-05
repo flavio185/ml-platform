@@ -1,0 +1,96 @@
+# Centralized Feast feature server shared by all ML projects.
+# Each project writes features to the SQL registry with its own project: name.
+# Scale-up: add HPA (min 2, max 10) when traffic increases.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feast-server
+  namespace: feast-ns
+  labels:
+    app: feast-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feast-server
+  template:
+    metadata:
+      labels:
+        app: feast-server
+    spec:
+      initContainers:
+        # psycopg2-binary is not bundled in feastdev/feature-server:latest
+        # Install it at startup so the SQL registry backend works.
+        - name: install-deps
+          image: feastdev/feature-server:latest
+          command: ["/bin/sh", "-c", "pip install psycopg2-binary --quiet"]
+          volumeMounts:
+            - name: pip-cache
+              mountPath: /root/.cache/pip
+      containers:
+        - name: feast
+          image: feastdev/feature-server:latest
+          # Override entrypoint: the image's container-entrypoint wraps 'serve' but
+          # the actual Feast CLI is at /opt/app-root/bin/feast.
+          command: ["/bin/sh", "-c"]
+          args:
+            - "pip install psycopg2-binary --quiet && /opt/app-root/bin/feast serve --host 0.0.0.0 --port 6566"
+          ports:
+            - containerPort: 6566
+              name: http
+          env:
+            - name: FEAST_REGISTRY
+              value: "postgresql+psycopg2://feast:feast@postgresql.mlflow-ns.svc.cluster.local:5432/feast_registry"
+            - name: FEAST_ONLINE_STORE_TYPE
+              value: redis
+            - name: FEAST_REDIS_CONNECTION_STRING
+              value: "redis-master.feast-ns.svc.cluster.local:6379"
+          volumeMounts:
+            - name: feast-config
+              mountPath: /opt/app-root/src/feature_store.yaml
+              subPath: feature_store.yaml
+            - name: pip-cache
+              mountPath: /root/.cache/pip
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6566
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6566
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: feast-config
+          configMap:
+            name: feast-feature-store-config
+        - name: pip-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feast-server
+  namespace: feast-ns
+  labels:
+    app: feast-server
+spec:
+  selector:
+    app: feast-server
+  ports:
+    - port: 6566
+      targetPort: 6566
+      name: http
+  type: ClusterIP
