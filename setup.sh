@@ -3,6 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+LOG_FILE="$SCRIPT_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "📝 Logging to $LOG_FILE"
+
 bash "$SCRIPT_DIR/AKS/aks_cluster_manager.sh" createaks
 sleep 30
 # Get AKS credentials
@@ -10,8 +14,10 @@ bash "$SCRIPT_DIR/AKS/aks_cluster_manager.sh" getcreds
 export KUBECONFIG=$HOME/.kube/config
 
 # Create AWS credentials secret in the app namespace
-# get aws credentials from .env file
-source "$SCRIPT_DIR/.env"
+# get aws credentials from .env file (only bash assignments; skip JSON block)
+set -a
+source <(grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Z_][A-Z0-9_]*=' "$SCRIPT_DIR/.env")
+set +a
 
 bash "$SCRIPT_DIR/app-ns/setup-app-ns.sh"
 

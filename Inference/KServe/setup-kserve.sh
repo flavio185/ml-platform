@@ -4,18 +4,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SCRIPT_DIR
 
-export KSERVE_VERSION=v0.15.2
-deploymentMode="Serverless"
+export KSERVE_VERSION=v0.17.0
+# v0.17.0: "Serverless" was renamed to "Knative" in the Helm chart values
+deploymentMode="Knative"
 
 echo "Installing KServe CRDs..."
 helm upgrade --install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd \
   --version "${KSERVE_VERSION}" --namespace kserve --create-namespace --wait
 
+# The kserve-crd chart uses a Helm lookup-based conditional that silently skips
+# clusterstoragecontainers.serving.kserve.io on fresh installs in some Helm versions.
+# Apply kserve-crds.yaml AFTER Helm (so Helm owns the other CRDs) using --force-conflicts
+# to patch in the missing CRD without disturbing Helm's ownership metadata.
+echo "Patching missing clusterstoragecontainers CRD..."
+kubectl apply --server-side --force-conflicts -f \
+  "https://github.com/kserve/kserve/releases/download/${KSERVE_VERSION}/kserve-crds.yaml"
+
 echo "Installing KServe controller..."
 # Install without --wait: the chart tries to apply ClusterServingRuntimes via webhook
 # before the controller pod is ready, causing a race condition that fails the install.
 # We wait for the pod explicitly below before applying cluster resources.
-helm upgrade --install kserve oci://ghcr.io/kserve/charts/kserve \
+# v0.17.0: chart renamed from kserve → kserve-resources
+helm upgrade --install kserve-resources oci://ghcr.io/kserve/charts/kserve-resources \
   --version "${KSERVE_VERSION}" --namespace kserve --create-namespace \
   --set-string kserve.controller.deploymentMode="${deploymentMode}" || true
 
@@ -54,9 +64,16 @@ EOF
 done
 
 # Install built-in ClusterServingRuntimes (sklearn, xgboost, lgbm, pytorch, etc.)
-echo "Applying KServe cluster resources..."
-kubectl apply --server-side -f \
-  "https://github.com/kserve/kserve/releases/download/${KSERVE_VERSION}/kserve-cluster-resources.yaml"
+# v0.17.0: kserve-cluster-resources.yaml also includes LLMInferenceServiceConfig objects
+# which require the optional kserve-llmisvc-crd chart. Filter them out since we only
+# need predictive inference runtimes.
+echo "Applying KServe cluster resources (ClusterServingRuntimes only)..."
+curl -sL "https://github.com/kserve/kserve/releases/download/${KSERVE_VERSION}/kserve-cluster-resources.yaml" \
+  | python3 -c "
+import yaml, sys
+docs = [d for d in yaml.safe_load_all(sys.stdin) if d and d.get('kind') != 'LLMInferenceServiceConfig']
+print(yaml.dump_all(docs, default_flow_style=False))
+" | kubectl apply --server-side -f -
 
 kubectl wait --for=condition=established --timeout=120s \
   crd/clusterservingruntimes.serving.kserve.io

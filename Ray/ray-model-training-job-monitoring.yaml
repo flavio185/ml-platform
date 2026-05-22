@@ -17,6 +17,15 @@ spec:
 
   # ttlSecondsAfterFinished specifies the number of seconds after which the RayCluster will be deleted after the RayJob finishes.
   ttlSecondsAfterFinished: 80
+  submitterPodTemplate:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: ray-job-submitter
+        image: rayproject/ray:2.46.0
   rayClusterSpec:
     rayVersion: "2.46.0"
     headGroupSpec:

@@ -22,57 +22,15 @@ helm upgrade --install redis bitnami/redis -n feast-ns \
 echo "Waiting for Redis..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=redis -n feast-ns --timeout=120s || true
 
-# 2. Feast registry database on existing MLflow PostgreSQL
-echo "Creating Feast registry database..."
+# 2. Dedicated PostgreSQL for Feast SQL registry (independent from MLflow's)
+echo "Deploying dedicated PostgreSQL for Feast registry..."
+kubectl apply -f "$SCRIPT_DIR/postgres-deployment.yaml"
 
-# Wait for PostgreSQL to be ready before attempting DB creation
-POSTGRES_POD=""
-for i in $(seq 1 12); do
-  POSTGRES_POD=$(kubectl get pod -n mlflow-ns -l app=postgresql \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-  if [ -n "$POSTGRES_POD" ]; then
-    READY=$(kubectl get pod -n mlflow-ns "$POSTGRES_POD" \
-      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
-    [ "$READY" = "True" ] && break
-  fi
-  echo "  Waiting for PostgreSQL pod... ($i/12)"
-  sleep 10
-done
+echo "Waiting for Feast PostgreSQL..."
+kubectl wait --for=condition=available deployment/feast-postgresql -n feast-ns --timeout=180s
+kubectl wait --for=condition=ready pod -l app=feast-postgresql -n feast-ns --timeout=120s
 
-if [ -n "$POSTGRES_POD" ]; then
-  # Create database (idempotent)
-  kubectl exec -n mlflow-ns "$POSTGRES_POD" -- \
-    psql -U mlflow -d mlflow-db -tc \
-    "SELECT 1 FROM pg_database WHERE datname='feast_registry'" | grep -q 1 || \
-  kubectl exec -n mlflow-ns "$POSTGRES_POD" -- \
-    psql -U mlflow -d mlflow-db -c "CREATE DATABASE feast_registry;"
-
-  # Create user and grant privileges (idempotent)
-  kubectl exec -n mlflow-ns "$POSTGRES_POD" -- \
-    psql -U mlflow -d mlflow-db -c \
-    "DO \$\$ BEGIN
-       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='feast') THEN
-         CREATE USER feast WITH PASSWORD 'feast';
-       END IF;
-     END \$\$;"
-
-  kubectl exec -n mlflow-ns "$POSTGRES_POD" -- \
-    psql -U mlflow -d mlflow-db -c \
-    "GRANT ALL PRIVILEGES ON DATABASE feast_registry TO feast;"
-
-  # Grant schema access so feast can create registry tables
-  kubectl exec -n mlflow-ns "$POSTGRES_POD" -- \
-    psql -U mlflow -d feast_registry -c \
-    "GRANT USAGE ON SCHEMA public TO feast;
-     GRANT CREATE ON SCHEMA public TO feast;
-     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO feast;"
-
-  echo "✅ Feast registry database ready on shared PostgreSQL"
-else
-  echo "❌ PostgreSQL not found in mlflow-ns after waiting. Aborting."
-  echo "   Ensure MLflow is deployed before running Feast setup."
-  exit 1
-fi
+echo "✅ Feast registry database ready on dedicated PostgreSQL"
 
 # 3. Apply feature_store.yaml ConfigMap before starting the server
 echo "Creating Feast feature-store config..."
@@ -87,7 +45,7 @@ data:
     project: ml_platform
     registry:
       registry_type: sql
-      path: postgresql+psycopg2://feast:feast@postgresql.mlflow-ns.svc.cluster.local:5432/feast_registry
+      path: postgresql+psycopg2://feast:feast@feast-postgresql.feast-ns.svc.cluster.local:5432/feast_registry
     provider: local
     online_store:
       type: redis
@@ -107,4 +65,4 @@ kubectl wait --for=condition=available deployment/feast-server -n feast-ns --tim
 echo "✅ Feast infrastructure setup complete"
 echo "  Redis: redis-master.feast-ns.svc.cluster.local:6379"
 echo "  Feature server: feast-server.feast-ns.svc.cluster.local:6566"
-echo "  Registry: postgresql.mlflow-ns.svc.cluster.local:5432/feast_registry"
+echo "  Registry: feast-postgresql.feast-ns.svc.cluster.local:5432/feast_registry"

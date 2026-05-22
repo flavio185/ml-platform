@@ -41,7 +41,7 @@ spec:
               name: http
           env:
             - name: FEAST_REGISTRY
-              value: "postgresql+psycopg2://feast:feast@postgresql.mlflow-ns.svc.cluster.local:5432/feast_registry"
+              value: "postgresql+psycopg2://feast:feast@feast-postgresql.feast-ns.svc.cluster.local:5432/feast_registry"
             - name: FEAST_ONLINE_STORE_TYPE
               value: redis
             - name: FEAST_REDIS_CONNECTION_STRING

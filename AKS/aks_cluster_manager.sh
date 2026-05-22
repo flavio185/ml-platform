@@ -17,7 +17,7 @@ OUTPUT_FILE="az_aks_output.log"
 
 # Usage instructions
 if [ -z "$1" ]; then
-  echo "Usage: $0 [createrg|createaks|getcreds|deleteaks|deleterg]"
+  echo "Usage: $0 [createrg|createaks|getcreds|setkubectl|deleteaks|deleterg]"
   exit 1
 fi
 
@@ -97,6 +97,15 @@ fi
 # Get AKS credentials
 if [ "$1" == "getcreds" ]; then
   getcreds
+fi
+
+# Get credentials and verify kubectl is configured
+if [ "$1" == "setkubectl" ]; then
+  getcreds
+  echo "🔧 Setting KUBECONFIG to $HOME/.kube/config" | tee -a "$OUTPUT_FILE"
+  export KUBECONFIG="$HOME/.kube/config"
+  echo "✅ kubectl context set. Verifying cluster connectivity..." | tee -a "$OUTPUT_FILE"
+  kubectl get nodes | tee -a "$OUTPUT_FILE"
 fi
 
 # Delete AKS cluster

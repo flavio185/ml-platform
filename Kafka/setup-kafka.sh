@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STRIMZI_VERSION="0.50.1"
+STRIMZI_VERSION="0.51.0"
 NAMESPACE="kafka"
 
 echo "kubectl context: $(kubectl config current-context)"
