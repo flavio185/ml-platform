@@ -86,10 +86,10 @@ echo ">>> [Step 7] Applying sklearn-iris InferenceService ..."
 kubectl apply -f "${SCRIPT_DIR}/../../Test/sklearn-iris.yaml" \
   || { echo "ERROR: Step 7 failed — sklearn-iris.yaml. Aborting."; exit 1; }
 
-echo "Waiting for InferenceService 'sklearn-iris' to be Ready (120s timeout) ..."
+echo "Waiting for InferenceService 'sklearn-iris' to be Ready (300s timeout) ..."
 kubectl wait --for=condition=Ready inferenceservice/sklearn-iris \
   -n "${APP_NS}" \
-  --timeout=120s \
+  --timeout=300s \
   || { echo "ERROR: Step 7 failed — sklearn-iris InferenceService not Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
