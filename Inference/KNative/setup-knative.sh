@@ -6,8 +6,10 @@
 
 set -euo pipefail
 
-KNATIVE_VERSION="v1.14.1"
-KAFKA_BROKER_VERSION="v1.14.1"
+KNATIVE_VERSION="v1.21.2"
+KAFKA_BROKER_VERSION="v1.21.2"
+# net-istio releases independently and may lag one patch behind Knative Serving
+NET_ISTIO_VERSION="v1.21.1"
 NAMESPACE="knative-serving"
 
 # ---------------------------------------------------------------------------
@@ -49,9 +51,9 @@ done
 # Step 4: net-istio (Knative Serving ingress via Istio)
 # ---------------------------------------------------------------------------
 echo ""
-echo ">>> [Step 4] Installing net-istio (${KNATIVE_VERSION}) ..."
+echo ">>> [Step 4] Installing net-istio (${NET_ISTIO_VERSION}) ..."
 kubectl apply -f \
-  "https://github.com/knative/net-istio/releases/download/knative-${KNATIVE_VERSION}/net-istio.yaml" \
+  "https://github.com/knative/net-istio/releases/download/knative-${NET_ISTIO_VERSION}/net-istio.yaml" \
   || { echo "ERROR: Failed to apply net-istio. Aborting."; exit 1; }
 
 # Configure Istio as the ingress class

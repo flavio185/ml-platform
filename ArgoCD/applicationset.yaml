@@ -1,0 +1,37 @@
+# ApplicationSet: auto-creates an Argo CD Application for each directory under projects/.
+# Adding a new directory = auto-provisioning a new ML project on the cluster.
+# This is the horizontal scaling mechanism for hundreds of projects.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ml-projects
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/DataMaster2026/ml-platform-gitops.git
+        revision: main
+        directories:
+          - path: projects/*
+  template:
+    metadata:
+      name: "ml-{{path.basename}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: ml-platform
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/DataMaster2026/ml-platform-gitops.git
+        targetRevision: main
+        path: "{{path}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "ml-{{path.basename}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ApplyOutOfSyncOnly=true

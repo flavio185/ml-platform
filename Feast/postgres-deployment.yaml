@@ -1,0 +1,74 @@
+# Dedicated PostgreSQL for the Feast SQL registry.
+# Kept separate from the MLflow PostgreSQL so feature-store and experiment-tracking
+# data have independent lifecycle, backups, and resource limits.
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: feast-postgres-pvc
+  namespace: feast-ns
+  labels:
+    app: feast-postgresql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feast-postgresql
+  namespace: feast-ns
+  labels:
+    app: feast-postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feast-postgresql
+  template:
+    metadata:
+      labels:
+        app: feast-postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:13
+          env:
+            - name: POSTGRES_DB
+              value: feast_registry
+            - name: POSTGRES_USER
+              value: feast
+            - name: POSTGRES_PASSWORD
+              value: feast
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: feast-postgredb
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "feast", "-d", "feast_registry"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: feast-postgredb
+          persistentVolumeClaim:
+            claimName: feast-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feast-postgresql
+  namespace: feast-ns
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: feast-postgresql

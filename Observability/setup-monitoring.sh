@@ -17,6 +17,12 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 # Install kube-prometheus-stack (Prometheus + Grafana + Alertmanager)
+# First install may fail due to ServiceAccount readiness race; a second upgrade fixes it.
+# --atomic rolls back on failure so the retry starts from a clean state.
+helm upgrade --install "$RELEASE_NAME" prometheus-community/kube-prometheus-stack \
+  -n "$NAMESPACE" --create-namespace \
+  -f "$VALUES_FILE" \
+  --timeout 10m || \
 helm upgrade --install "$RELEASE_NAME" prometheus-community/kube-prometheus-stack \
   -n "$NAMESPACE" --create-namespace \
   -f "$VALUES_FILE" \

@@ -1,8 +1,8 @@
-export CERT_MANAGER_VERSION=v1.16.1
+export CERT_MANAGER_VERSION=v1.20.1
 
 # Install Cert Manager
 helm repo add jetstack https://charts.jetstack.io --force-update
-helm install \
+helm upgrade --install \
    cert-manager jetstack/cert-manager \
    --namespace cert-manager \
    --create-namespace \

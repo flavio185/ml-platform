@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ray-cluster-metrics
+  namespace: app-ns
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - app-ns
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kuberay
+      ray.io/node-type: head
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    honorLabels: true

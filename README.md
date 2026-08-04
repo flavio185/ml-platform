@@ -1,59 +1,179 @@
-# README.md: ml-project-scaffold
+# ml-platform
 
-## 1. Objetivo do Case
+Infraestrutura Kubernetes para a plataforma de MLOps da DataMaster2026. Provisiona todos os componentes necessarios para treinar, servir e monitorar modelos de Machine Learning em **Azure Kubernetes Service (AKS)**.
 
-O objetivo deste **ML Project Scaffold** é prover uma fundação de engenharia de Machine Learning (MLOps) robusta, padronizada e *cloud-native*. Ele automatiza o ciclo de vida completo do ML, desde o pré-processamento distribuído e treinamento até a inferência escalável e observabilidade aprofundada, garantindo **reprodutibilidade**, **escalabilidade** e **eficiência** de recursos em um ambiente **Azure Kubernetes Service (AKS)**.
+## Arquitetura
 
-## 2. Arquitetura de Solução e Arquitetura Técnica
-
-A arquitetura é construída sobre um *stack* de código aberto e *cloud-native*, orquestrado pelo Kubernetes no AKS.
-
-| Componente | Função | Tecnologias Chave |
+| Componente | Funcao | Tecnologias |
 | :--- | :--- | :--- |
-| **Infraestrutura** | Orquestração e Cluster Management. | **AKS (Azure Kubernetes Service)**, **Kubernetes** |
-| **Computação Distribuída** | Treinamento e Pré-processamento de alto desempenho. | **Ray** |
-| **Inferência Online** | Servidor de modelos escalável e Serverless. | **KServe** (com **Knative** e **Istio**) |
-| **Gerenciamento de Modelos** | Rastreamento de experimentos, registro e versionamento de modelos. | **MLflow** |
-| **Backend MLflow** | Banco de dados para *tracking* de metadados. | **PostgreSQL** |
-| **Artifact Store** | Armazenamento de modelos (artefatos). | **Minio** (compatível com S3) |
-| **Data Lake** | Armazenamento de dados de treinamento. | **S3** (Azure Blob Storage compatível) |
-| **CI/CD** | Automação dos pipelines de treinamento e deployment. | **GitHub Actions** |
-| **Observabilidade** | Logs, Métricas e Dashboards. | **Prometheus**, **Grafana**, **Loki**, **Ray Log Offloader** |
+| **Infraestrutura** | Cluster e orquestracao | AKS, Kubernetes |
+| **Orquestracao de Pipelines** | DAGs de ML (bronze -> gold -> training) | **Argo Workflows** + ClusterWorkflowTemplates |
+| **Continuous Delivery** | GitOps — sync automatico de manifests | **Argo CD** + ApplicationSet |
+| **Retraining Automatico** | Evento de drift dispara pipeline | **Argo Events** (EventSource + Sensor) |
+| **Feature Store** | Consistencia de features treino/inferencia | **Feast** (SQL registry, Redis online, file offline) |
+| **Computacao Distribuida** | Treinamento pesado sob demanda | **Ray** (KubeRay) |
+| **Inferencia Online** | Serving escalavel e serverless | **KServe** (Knative + Istio) |
+| **Gerenciamento de Modelos** | Tracking, registro, versionamento | **MLflow** (PostgreSQL + Minio) |
+| **Observabilidade** | Logs, metricas, dashboards | Prometheus, Grafana, Loki |
+| **Streaming** | Payload logging de inferencia | Kafka |
 
-### Fluxo Arquitetural Chave:
+### Fluxo Arquitetural
 
-1.  **Treinamento Distribuído:** Uma **GitHub Action** é acionada, submetendo o job de treinamento para um cluster **Ray** efêmero no AKS. O Ray executa pré-processamento e treinamento lendo os dados diretamente do **S3**.
-2.  **Model Management:** Ao final do treinamento, o modelo é salvo no **Minio** (via MLflow) e os metadados da execução são registrados no **PostgreSQL** (via MLflow).
-3.  **Data Lineage Leve:** Para garantir a rastreabilidade sem inflacionar o MLflow, **apenas os metadados dos dados de treinamento (local, nome, versão)** são logados no MLflow, enquanto os dados brutos permanecem no S3.
-4.  **Inferência Serverless:** Outra **GitHub Action** implanta o modelo no **KServe**. O KServe, via **Knative**, habilita o *auto-scaling* e o *scale-to-zero*, expondo o serviço através do **Istio**.
+```
+GitHub Actions (CI)
+  |-- lint + test
+  |-- Docker build + push (Docker Hub)
+  └-- Commit image tag no ml-platform-gitops
+         |
+         v
+Argo CD (CD)
+  |-- Detecta mudanca no gitops repo
+  |-- Sync automatico (prune + selfHeal)
+  └-- Cria/atualiza recursos no namespace ml-{projeto}
+         |
+         v
+Argo Workflows (Orquestracao)
+  |-- DAG: bronze -> silver -> validate -> features -> training
+  |-- CronWorkflow diario
+  └-- Argo Events: drift -> retraining automatico
+         |
+         v
+Feast (Feature Store)              MLflow (Model Registry)
+  |-- Offline: S3 parquet            |-- Tracking de metricas
+  |-- Online: Redis                  |-- Registro de modelos
+  └-- Registry: PostgreSQL           └-- Artefatos no Minio
+         |                                    |
+         v                                    v
+KServe (Inferencia)
+  |-- Modelo do MLflow/Minio
+  |-- Features do Feast online store
+  |-- Scale 0-N (Knative)
+  └-- Payload logging (Kafka)
+```
 
-## 3. Explicação sobre o Case Desenvolvido (Plano de Implementação)
+## Estrutura do Repositorio
 
-O *scaffold* oferece uma estrutura de código e IaC (Infrastructure as Code) para garantir que novos projetos herdem automaticamente as melhores práticas de MLOps.
+```
+ml-platform/
+|-- AKS/                          # Provisionamento do cluster AKS
+|-- ArgoWorkflows/
+|   |-- setup-argo-workflows.sh   # Instala controller + Argo Events
+|   |-- rbac.yaml                 # ClusterRole para workflows em namespaces ml-*
+|   └-- cluster-workflow-templates.yaml  # Templates compartilhados:
+|                                        #   container-step, rayjob-step, feast-materialize
+|-- ArgoCD/
+|   |-- setup-argocd.sh           # Instala Argo CD
+|   └-- applicationset.yaml       # Git directory generator (projects/*)
+|
+|-- Feast/
+|   |-- setup-feast.sh            # Redis standalone + DB feast_registry + feature server
+|   └-- feast-server-deployment.yaml  # Deployment + Service do feature server
+|
+|-- base-image/
+|   └-- Dockerfile                # Imagem base compartilhada (Python 3.12 + feast + mlflow + ray)
+|
+|-- Ray/                          # KubeRay operator e configuracao
+|-- MLFlow/                       # MLflow server (Helm) + PostgreSQL + Minio
+|-- Inference/
+|   └── KNative/                  # KServe + Knative + Istio + triggers
+|-- Kafka/                        # Kafka para payload logging
+|-- Observability/                # Prometheus + Grafana + Loki
+|-- app-ns/                       # Namespace legado (migrado para ml-{projeto})
+|
+└-- setup.sh                      # Script principal — provisiona tudo em ordem
+```
 
-### A. Treinamento e Pré-processamento com Ray
-* **Execução via GitHub Actions:** O fluxo de CI/CD utiliza GitHub Actions para encapsular o código de treinamento em uma imagem e submeter um **RayJob** no Kubernetes, facilitando a execução de treinamentos distribuídos e *hyperparameter tuning* sem a necessidade de gerenciar o ciclo de vida do cluster Ray manualmente.
-* **Ray Datasets/Train:** O código de treinamento é escrito para aproveitar as bibliotecas nativas do Ray para otimizar a leitura de dados do S3 e o treinamento distribuído (ex: `Ray.data` e `Ray.train`).
+## Instalacao
 
-### B. Inferência Online Serverless com KServe
-* **Deployment Otimizado:** O KServe é a camada de serving, configurado para consumir o modelo diretamente do **Minio**.
-* **Escalabilidade e Eficiência:** O uso de **Knative** permite que o serviço de inferência escale de zero a N réplicas em segundos, otimizando o custo quando não há tráfego e garantindo baixa latência em picos de demanda.
-* **Roteamento:** **Istio** é usado para gerenciar o tráfego de entrada (InferenceService Ingress), permitindo roteamento de tráfego, políticas de segurança e futuras implementações de *canary deployment*.
+```bash
+# Provisiona cluster AKS e todos os componentes
+./setup.sh
+```
 
-### C. Observabilidade e Persistência de Logs
-* **Logs Persistentes (Ray Offloader)::** Um componente crítico é o **Ray Log Offloader**. Ele garante que, mesmo após a finalização do Ray Cluster (que é efêmero após a conclusão do job), os logs de todos os workers e do head node sejam descarregados e persistidos em um armazenamento secundário (DuckDB/Minio). Isso é fundamental para o *debugging* e a auditoria de jobs de treinamento passados.
-* **Inference Metrics:** O KServe é integrado ao **Prometheus** para expor métricas de inferência cruciais (latência, taxa de erro HTTP, volume de requisições). Essas métricas são visualizadas no **Grafana**.
-* **Tabela de Inferência:** O *serving runtime* está configurado para registrar o *payload* completo de cada inferência (entradas, saídas, *timestamps* e ID do modelo) em uma "tabela de inferência" (geralmente um banco de dados analítico como o DuckDB com dados no Minio), servindo como uma fonte de dados para **análise de desvio de modelo (drift)** e **auditoria de decisões**.
+O `setup.sh` executa na seguinte ordem:
+1. AKS cluster + kubeconfig
+2. Ray (KubeRay operator)
+3. MLflow (Helm: server + PostgreSQL + Minio)
+4. KServe + Knative + Istio
+5. Feast (Redis + DB registry + feature server)
+6. Argo Workflows (controller + Events + templates compartilhados)
+7. Argo CD (controller + ApplicationSet)
 
-## 4. Melhorias e Considerações Finais
+## Componentes Detalhados
 
-### Melhorias a Serem Implementadas:
+### Argo Workflows
 
-1.  **Feature Store (Ex: Feast/Hopsworks):** Adicionar uma Feature Store para garantir a consistência das *features* usadas no pré-processamento e na inferência, além de simplificar o *data lineage*.
-2.  **Monitoramento de Drift:** Integrar uma ferramenta de monitoramento de ML (ex: Evidently, WhyLabs) que leia os dados da Tabela de Inferência para alertas automáticos de desvio de dados (*data drift*) e de modelo (*model drift*).
-3.  **Deployment Estratégico:** Implementar pipelines Blue/Green ou Canary automatizados, utilizando os recursos de roteamento de tráfego do Istio/KServe, para mitigar riscos durante a implantação de novos modelos em produção.
-4.  **Autenticação Reforçada:** Implementar autenticação e autorização (RBAC) mais robustas para acesso aos endpoints do MLflow e aos serviços do KServe.
+Orquestra os pipelines de ML como DAGs Kubernetes. Fornece **ClusterWorkflowTemplates** compartilhados:
 
-### Considerações Finais:
+| Template | Descricao | Uso |
+| :--- | :--- | :--- |
+| `container-step` | Execucao generica em container com retry | Todos os steps por padrao |
+| `rayjob-step` | Submete RayJob e aguarda conclusao | Opt-in para treinamento distribuido |
+| `feast-materialize` | Aplica definicoes e materializa features | Step de features |
 
-Este projeto estabelece um padrão moderno de MLOps. A escolha de tecnologias como Ray e KServe aborda diretamente os requisitos de **escalabilidade** para grandes volumes de dados (Ray) e **eficiência operacional** para inferência (KServe/Knative). A arquitetura de observabilidade, com persistência de logs de jobs efêmeros e coleta de dados de inferência, garante que a plataforma seja **auditável** e **confiável** para ambientes produtivos.
+Cada projeto define seu proprio `WorkflowTemplate` (DAG) e `CronWorkflow` no gitops repo.
+
+### Argo CD + GitOps
+
+O **ApplicationSet** com Git directory generator monitora `ml-platform-gitops/projects/*`. Adicionar um diretorio = provisionar automaticamente:
+
+```
+ml-platform-gitops/
+  base/                          # Kustomize base compartilhado
+  projects/
+    credit-default/              # ml-default-payment-project
+      kustomization.yaml
+      namespace.yaml             # Namespace + ResourceQuota + RBAC
+      argo-workflow.yaml         # WorkflowTemplate DAG
+      cron-workflow.yaml         # Pipeline agendado
+      argo-events.yaml           # Retraining por drift
+      kserve-inference.yaml      # InferenceService
+    # novos projetos adicionados aqui pelo scaffold
+```
+
+### Feast
+
+Configuracao minima, arquitetada para escalar:
+
+| Componente | Atual | Escala para | Mudanca necessaria |
+| :--- | :--- | :--- | :--- |
+| Offline store | `file` (PyArrow no S3) | `spark` no Ray | 1 linha no YAML |
+| Online store | Redis standalone | Redis Cluster (6+ nos) | Helm chart swap |
+| Registry | SQL (PostgreSQL) | Mesmo (ja correto) | — |
+| Feature server | 1 replica | HPA min 2 / max 10 | Adicionar HPA manifest |
+
+### Namespace por Projeto
+
+Cada projeto ML roda em namespace isolado `ml-{projeto}` com:
+- **ResourceQuota**: CPU, memoria, pods
+- **ServiceAccount** dedicado para Argo Workflows
+- **RoleBinding** com permissoes minimas (pods, workflows, rayjobs)
+
+### Imagem Base Compartilhada
+
+```dockerfile
+# ml-platform/base-image/Dockerfile
+FROM python:3.12-slim
+# Inclui: feast[redis], mlflow, ray, pandas, scikit-learn, great-expectations, etc.
+```
+
+Publicada em `docker.io/flavio185/ml-platform-base:latest`. Projetos individuais estendem esta imagem com suas dependencias especificas.
+
+## Caminhos de Escala
+
+| Componente | Atual (minimo) | Escala para | Mudanca |
+| :--- | :--- | :--- | :--- |
+| AKS nodes | 2-6 (autoscaler) | Node pools dedicados (platform, workload, spot) | Adicionar node pools |
+| Argo Workflow steps | `container-step` (pod unico) | `rayjob-step` (Ray distribuido) | Mudar 1 templateRef |
+| Feast online store | Redis standalone | Redis Cluster | Helm chart swap |
+| Feast feature server | 1 replica | HPA 2-10 replicas | Adicionar HPA |
+| Feast offline store | `file` (PyArrow) | `spark` no Ray | 1 linha no YAML |
+| ResourceQuota | Limites generosos | Ajustados por projeto | Config |
+| KServe | Scale 0-5 | Mais replicas + HPA | Config |
+
+## Melhorias Futuras
+
+1. **Monitoramento de Drift**: Integrar Evidently/WhyLabs com a tabela de inferencia para alertas automaticos de data drift e model drift
+2. **Deployment Estrategico**: Pipelines Blue/Green ou Canary automatizados via Istio/KServe
+3. **Autenticacao Reforcada**: RBAC mais robusto para MLflow e KServe
+4. **Node Pools Dedicados**: Pools separados para platform services, workloads e spot instances

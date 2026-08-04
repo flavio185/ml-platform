@@ -12,10 +12,6 @@ jobs:
   setup-platform:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.confirm == 'yes' }}
-    defaults:
-      run:
-        working-directory: ml-platform
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -117,4 +117,6 @@ spec:
     attributes:
       type: mlops.drift.detected
   subscriber:
-    uri: http://retraining-trigger.app-ns.svc.cluster.local
+    # Routes drift events to Argo Events EventSource webhook.
+    # The Argo Sensor then submits a retraining Workflow.
+    uri: http://drift-detected-source-eventsource-svc.argo-events.svc.cluster.local:12000/drift-detected

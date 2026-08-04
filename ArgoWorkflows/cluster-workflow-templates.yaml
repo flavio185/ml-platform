@@ -1,0 +1,162 @@
+# Shared ClusterWorkflowTemplates used by all ML projects.
+# Projects reference these via templateRef with clusterScope: true.
+
+---
+# container-step: Generic container execution with retry.
+# Used for most pipeline steps (bronze, silver, validate, features, training).
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: container-step
+spec:
+  templates:
+    - name: run
+      inputs:
+        parameters:
+          - name: image
+          - name: cmd
+          - name: cpu-request
+            default: "200m"
+          - name: memory-request
+            default: "512Mi"
+          - name: cpu-limit
+            default: "1"
+          - name: memory-limit
+            default: "2Gi"
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+      timeout: "30m"
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["sh", "-c"]
+        args: ["{{inputs.parameters.cmd}}"]
+        envFrom:
+          - secretRef:
+              name: aws-credentials
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "http://nginx.mlflow-ns.svc.cluster.local"
+        resources:
+          requests:
+            cpu: "{{inputs.parameters.cpu-request}}"
+            memory: "{{inputs.parameters.memory-request}}"
+          limits:
+            cpu: "{{inputs.parameters.cpu-limit}}"
+            memory: "{{inputs.parameters.memory-limit}}"
+
+---
+# rayjob-step: Submits a RayJob for distributed compute and waits for completion.
+# Used when a step needs to scale beyond a single pod (large datasets, distributed training).
+# Scale-up path: change a step's templateRef from container-step to rayjob-step.
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: rayjob-step
+spec:
+  templates:
+    - name: run
+      inputs:
+        parameters:
+          - name: image
+          - name: entrypoint
+          - name: min-replicas
+            default: "1"
+          - name: max-replicas
+            default: "5"
+          - name: cpu-per-worker
+            default: "1"
+          - name: memory-per-worker
+            default: "2Gi"
+      timeout: "2h"
+      resource:
+        action: create
+        setOwnerReference: true
+        successCondition: status.jobStatus == SUCCEEDED
+        failureCondition: status.jobStatus == FAILED
+        manifest: |
+          apiVersion: ray.io/v1
+          kind: RayJob
+          metadata:
+            generateName: argo-rayjob-
+          spec:
+            entrypoint: "{{inputs.parameters.entrypoint}}"
+            shutdownAfterJobFinishes: true
+            ttlSecondsAfterFinished: 60
+            runtimeEnvYAML: |
+              env_vars:
+                MLFLOW_TRACKING_URI: "http://nginx.mlflow-ns.svc.cluster.local"
+            rayClusterSpec:
+              rayVersion: "2.46.0"
+              headGroupSpec:
+                rayStartParams:
+                  metrics-export-port: "8080"
+                template:
+                  spec:
+                    containers:
+                      - name: ray-head
+                        image: "{{inputs.parameters.image}}"
+                        resources:
+                          requests:
+                            cpu: "200m"
+                          limits:
+                            cpu: "{{inputs.parameters.cpu-per-worker}}"
+                            memory: "{{inputs.parameters.memory-per-worker}}"
+                        envFrom:
+                          - secretRef:
+                              name: aws-credentials
+              workerGroupSpecs:
+                - groupName: workers
+                  minReplicas: {{inputs.parameters.min-replicas}}
+                  maxReplicas: {{inputs.parameters.max-replicas}}
+                  rayStartParams: {}
+                  template:
+                    spec:
+                      containers:
+                        - name: ray-worker
+                          image: "{{inputs.parameters.image}}"
+                          resources:
+                            requests:
+                              cpu: "200m"
+                            limits:
+                              cpu: "{{inputs.parameters.cpu-per-worker}}"
+                              memory: "{{inputs.parameters.memory-per-worker}}"
+                          envFrom:
+                            - secretRef:
+                                name: aws-credentials
+
+---
+# feast-materialize: Runs Feast materialization to push features to online store.
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: feast-materialize
+spec:
+  templates:
+    - name: run
+      inputs:
+        parameters:
+          - name: image
+          - name: feast-repo-path
+            default: "feast/"
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+      timeout: "30m"
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["sh", "-c"]
+        args:
+          - |
+            feast -c {{inputs.parameters.feast-repo-path}} apply &&
+            feast -c {{inputs.parameters.feast-repo-path}} materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S)
+        envFrom:
+          - secretRef:
+              name: aws-credentials
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"

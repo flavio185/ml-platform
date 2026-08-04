@@ -1,0 +1,23 @@
+# ClusterRole for Argo Workflows controller to manage workflows in ml-* namespaces.
+# Each project namespace gets its own ServiceAccount + RoleBinding via the namespace template.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-workflow-executor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "workflowtemplates", "clusterworkflowtemplates", "cronworkflows", "workflowtaskresults"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["ray.io"]
+    resources: ["rayjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["eventsources", "sensors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
