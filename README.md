@@ -22,7 +22,7 @@ Infraestrutura Kubernetes para a plataforma de MLOps da DataMaster2026. Provisio
 ```
 GitHub Actions (CI)
   |-- lint + test
-  |-- Docker build + push (GHCR)
+  |-- Docker build + push (Docker Hub)
   └-- Commit image tag no ml-platform-gitops
          |
          v
@@ -157,7 +157,7 @@ FROM python:3.12-slim
 # Inclui: feast[redis], mlflow, ray, pandas, scikit-learn, great-expectations, etc.
 ```
 
-Publicada em `ghcr.io/datamaster2026/ml-platform-base:latest`. Projetos individuais estendem esta imagem com suas dependencias especificas.
+Publicada em `docker.io/flavio185/ml-platform-base:latest`. Projetos individuais estendem esta imagem com suas dependencias especificas.
 
 ## Caminhos de Escala
 
