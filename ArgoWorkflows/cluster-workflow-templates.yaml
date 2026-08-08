@@ -174,8 +174,13 @@ spec:
         image: "{{inputs.parameters.image}}"
         command: ["sh", "-c"]
         args:
+          # `command: [sh, -c]` above replaces the project image's own
+          # `ENTRYPOINT ["uv", "run"]` entirely (K8s command overrides Docker
+          # ENTRYPOINT) — same reason every other step's cmd starts with
+          # `uv run python ...`. Without this prefix, promote-model (installed
+          # by `uv sync` into /app/.venv/bin, not system PATH) isn't found.
           - >-
-            promote-model
+            uv run promote-model
             --model-name {{inputs.parameters.model-name}}
             --repo {{inputs.parameters.repo}}
             --base-branch {{inputs.parameters.base-branch}}

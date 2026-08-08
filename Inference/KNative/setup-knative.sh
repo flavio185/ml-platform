@@ -70,6 +70,29 @@ kubectl patch configmap config-domain \
   -p '{"data":{"example.com":""}}' \
   || { echo "ERROR: Failed to patch config-domain. Aborting."; exit 1; }
 
+# Two separate keys, both default to "none" and must be set independently:
+#   - request-metrics-protocol: queue-proxy's PER-REQUEST metrics (revision_*
+#     request latency/concurrency series). Confirmed empirically these land
+#     on the predictor's http-usermetric port (9091) once enabled --
+#     ../MetricsMonitoring/kserve-service-monitor.yaml scrapes that port.
+#     NOT http-autometric (9090): that port is queue-proxy's internal-only
+#     OpenCensus/protobuf channel feeding the autoscaler, and stays protobuf
+#     regardless of this setting (confirmed via GIT_CURL_VERBOSE-style
+#     tracing -- Content-Type: application/protobuf even with this set).
+#   - metrics-protocol: the autoscaler/controller/webhook components' OWN
+#     metrics (autoscaler_actual_pods, autoscaler_desired_pods, etc., on the
+#     autoscaler Service's http-metrics port 9090 -- confirmed via
+#     connection-refused until this was set). Also scraped by
+#     ../MetricsMonitoring/kserve-service-monitor.yaml's
+#     knative-autoscaler-monitoring ServiceMonitor.
+# NB: both are Knative 1.21+ keys -- the old metrics.backend-destination key
+# from pre-OTel Knative versions no longer applies and is silently ignored.
+kubectl patch configmap config-observability \
+  -n "${NAMESPACE}" \
+  --type merge \
+  -p '{"data":{"request-metrics-protocol":"prometheus","metrics-protocol":"prometheus"}}' \
+  || { echo "ERROR: Failed to patch config-observability. Aborting."; exit 1; }
+
 # ---------------------------------------------------------------------------
 # Step 5: Knative Eventing CRDs
 # ---------------------------------------------------------------------------

@@ -11,5 +11,35 @@ spec:
     matchLabels:
       networking.internal.knative.dev/serviceType: Private
   endpoints:
+  # http-usermetric (9091) is the correct port — it's genuinely the
+  # user-facing request-metrics endpoint (confirmed via Knative issue
+  # tracker: port 9090/http-autometric is queue-proxy's internal-only
+  # protobuf channel feeding the autoscaler, never meant for Prometheus).
+  # It had nothing listening because request-metrics-protocol defaulted to
+  # "none" — fixed via a config-observability patch, see
+  # ../KNative/setup-knative.sh.
   - port: http-usermetric
+    interval: 15s
+
+---
+# Cluster-wide Knative autoscaler component metrics (autoscaler_actual_pods,
+# autoscaler_desired_pods, etc. — queried by kserve-dashboard.json) come from
+# the singleton `autoscaler` Service in knative-serving, not from any
+# per-InferenceService pod, so this needs its own ServiceMonitor.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: knative-autoscaler-monitoring
+  namespace: knative-serving
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+    - knative-serving
+  selector:
+    matchLabels:
+      app: autoscaler
+  endpoints:
+  - port: http-metrics
     interval: 15s
