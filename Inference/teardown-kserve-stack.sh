@@ -2,6 +2,15 @@
 # File: teardown-kserve-stack.sh
 # Purpose: Tear down the full inference stack in safe reverse-dependency order.
 #          Does NOT touch: monitoring, kuberay, mlflow, kube-system.
+#
+# WARNING: Step 8 removes Istio and the istio-system namespace entirely, and
+# step 10 removes the Gateway API CRDs. Other repos outside this one
+# (kubernetes-gitops, kubernetes-mlflow, kubernetes-observability) install
+# their own NGINX Gateway Fabric + Gateway/HTTPRoute resources for
+# mlflow/argocd/argo-workflows/grafana — NGF is unaffected by this script,
+# but double-check nothing else in your cluster still expects
+# istio-ingressgateway (e.g. a Gateway API Gateway using gatewayClassName:
+# istio) before running this.
 
 set -euo pipefail
 

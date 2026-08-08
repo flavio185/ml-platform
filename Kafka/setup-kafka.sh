@@ -28,11 +28,11 @@ curl -sL "https://github.com/strimzi/strimzi-kafka-operator/releases/download/${
   | kubectl apply -f - -n "${NAMESPACE}" \
   || { echo "ERROR: Failed to install Strimzi Operator. Aborting."; exit 1; }
 
-echo "Waiting for Strimzi Cluster Operator to be ready (120s timeout) ..."
+echo "Waiting for Strimzi Cluster Operator to be ready (240s timeout) ..."
 kubectl wait --for=condition=ready pod \
   -l name=strimzi-cluster-operator \
   -n "${NAMESPACE}" \
-  --timeout=120s \
+  --timeout=240s \
   || { echo "ERROR: Strimzi Operator did not become ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------

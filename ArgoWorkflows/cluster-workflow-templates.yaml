@@ -13,6 +13,7 @@ spec:
     - name: run
       inputs:
         parameters:
+          - name: step-name
           - name: image
           - name: cmd
           - name: cpu-request
@@ -27,6 +28,9 @@ spec:
         limit: "2"
         retryPolicy: OnFailure
       timeout: "30m"
+      metadata:
+        labels:
+          pipeline-step: "{{inputs.parameters.step-name}}"
       container:
         image: "{{inputs.parameters.image}}"
         command: ["sh", "-c"]
@@ -39,11 +43,11 @@ spec:
             value: "http://nginx.mlflow-ns.svc.cluster.local"
         resources:
           requests:
-            cpu: "{{inputs.parameters.cpu-request}}"
-            memory: "{{inputs.parameters.memory-request}}"
+            cpu: "200m"
+            memory: "512Mi"
           limits:
-            cpu: "{{inputs.parameters.cpu-limit}}"
-            memory: "{{inputs.parameters.memory-limit}}"
+            cpu: "1"
+            memory: "2Gi"
 
 ---
 # rayjob-step: Submits a RayJob for distributed compute and waits for completion.
@@ -124,6 +128,72 @@ spec:
                           envFrom:
                             - secretRef:
                                 name: aws-credentials
+
+---
+# promote-model: Opens a PR pointing a KServe manifest's storageUri at whatever
+# MLflow run the calling project just promoted to the `champion` alias (see
+# mlflow.tracking.MlflowClient.set_registered_model_alias), and enables
+# auto-merge so it lands once the target repo's own CI checks pass. Runs
+# base-image/scripts/promote_model.py, baked into ml-platform-base — fully
+# generic, all specifics (model name, repo, branch, manifest path) are passed
+# in below by the calling project's Workflow.
+#
+# Requires in the calling project's namespace: a `github-credentials` Secret
+# (key: token, classic `repo` scope or fine-grained Contents+PRs: write), and
+# on the target repo: "Allow auto-merge" enabled + a required status check on
+# the base branch — otherwise `gh pr merge --auto` merges with nothing to
+# wait on. See ml-default-payment-project/gitops/argo-workflow.yaml for an
+# example call site.
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: promote-model
+spec:
+  templates:
+    - name: run
+      inputs:
+        parameters:
+          - name: image
+          - name: model-name
+          - name: repo
+          - name: base-branch
+          - name: yaml-path
+          - name: mlflow-tracking-uri
+            default: "http://nginx.mlflow-ns.svc.cluster.local"
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+      timeout: "15m"
+      metadata:
+        labels:
+          pipeline-step: promote
+      container:
+        image: "{{inputs.parameters.image}}"
+        command: ["sh", "-c"]
+        args:
+          - >-
+            python /opt/platform-scripts/promote_model.py
+            --model-name {{inputs.parameters.model-name}}
+            --repo {{inputs.parameters.repo}}
+            --base-branch {{inputs.parameters.base-branch}}
+            --yaml-relpath {{inputs.parameters.yaml-path}}
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "{{inputs.parameters.mlflow-tracking-uri}}"
+          # Required, not optional: promote's only job is to push + open a PR,
+          # so a missing token should fail the step loudly rather than no-op.
+          - name: GH_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-credentials
+                key: token
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
 
 ---
 # feast-materialize: Runs Feast materialization to push features to online store.
