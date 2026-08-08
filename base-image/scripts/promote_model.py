@@ -22,6 +22,7 @@ auto-merge" setting plus a required status check on the base branch —
 otherwise `gh pr merge --auto` merges with nothing to wait on.
 """
 
+import base64
 import os
 from pathlib import Path
 import re
@@ -63,9 +64,28 @@ def update_storage_uri(yaml_path: Path, new_uri: str) -> bool:
     return True
 
 
-def run(args: list[str], cwd: Path) -> str:
-    result = subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
+def run(args: list[str], cwd: Path, env: dict | None = None) -> str:
+    """Run a command, logging stderr before raising so Argo logs show *why*
+    a failure happened, not just that it did."""
+    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, env=env)
+    if result.returncode != 0:
+        logger.error(f"Command failed: {' '.join(args)}\nstderr: {result.stderr.strip()}")
+        result.check_returncode()
     return result.stdout.strip()
+
+
+def git_auth_env(token: str) -> dict:
+    """Env vars that authenticate git's HTTPS transport without the token ever
+    appearing in argv or a remote URL — both of which git will happily echo
+    back into stdout/stderr (and therefore Argo/Grafana logs) on an auth
+    failure. Same mechanism actions/checkout uses."""
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {
+        **os.environ,
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {basic}",
+    }
 
 
 @app.command()
@@ -88,17 +108,17 @@ def promote(
 
     # Also picked up automatically by `gh` (GH_TOKEN/GITHUB_TOKEN) below.
     token = os.environ["GH_TOKEN"]
-    authed_url = f"https://github.com/{repo}.git".replace(
-        "https://", f"https://x-access-token:{token}@"
-    )
+    auth_env = git_auth_env(token)
+    repo_url = f"https://github.com/{repo}.git"
 
     clone_path = Path(clone_dir)
     if clone_path.exists():
         shutil.rmtree(clone_path)
 
     run(
-        ["git", "clone", "--branch", base_branch, "--depth", "1", authed_url, str(clone_path)],
+        ["git", "clone", "--branch", base_branch, "--depth", "1", repo_url, str(clone_path)],
         cwd=clone_path.parent,
+        env=auth_env,
     )
 
     yaml_path = clone_path / yaml_relpath
@@ -123,7 +143,7 @@ def promote(
         ],
         cwd=clone_path,
     )
-    run(["git", "push", "origin", promote_branch], cwd=clone_path)
+    run(["git", "push", "origin", promote_branch], cwd=clone_path, env=auth_env)
 
     pr_url = run(
         [
