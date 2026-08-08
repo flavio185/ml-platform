@@ -22,10 +22,10 @@ RUN uv pip install --system --no-cache \
     "loguru" \
     "typer"
 
-# GitHub CLI — used by scripts/promote_model.py (opens a promote/* PR and
-# enables auto-merge). Shared here, not per-project, since the promote-model
-# ClusterWorkflowTemplate (ArgoWorkflows/cluster-workflow-templates.yaml) is
-# available to every project on the platform.
+# GitHub CLI — genuine OS-level tool (unlike promote-model's own logic, which
+# is a project dependency each consuming project pins via pyproject.toml/
+# uv.lock — see packages/mlops-promote — precisely so that changing it doesn't
+# require a base-image rebuild).
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       | tee /usr/share/keyrings/githubcli-archive-keyring.gpg > /dev/null \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -34,9 +34,5 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
-
-# Platform scripts, invoked directly (installed --system, so no venv/uv run
-# needed) by shared ClusterWorkflowTemplates — e.g. promote-model.
-COPY scripts/ /opt/platform-scripts/
 
 WORKDIR /app
