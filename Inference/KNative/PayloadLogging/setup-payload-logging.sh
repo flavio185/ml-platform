@@ -8,18 +8,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KNATIVE_NS="knative-serving"
-APP_NS="app-ns"
+NAMESPACE="app-ns"
 
 # ---------------------------------------------------------------------------
 # Step 2: Ensure namespace default exists
 # ---------------------------------------------------------------------------
 echo ""
-if kubectl get namespace "${APP_NS}" &>/dev/null; then
-  echo "Namespace '${APP_NS}' already exists."
+if kubectl get namespace "${NAMESPACE}" &>/dev/null; then
+  echo "Namespace '${NAMESPACE}' already exists."
 else
-  echo "Creating namespace '${APP_NS}' ..."
-  kubectl create namespace "${APP_NS}" \
-    || { echo "ERROR: Step 2 failed — could not create namespace '${APP_NS}'. Aborting."; exit 1; }
+  echo "Creating namespace '${NAMESPACE}' ..."
+  kubectl create namespace "${NAMESPACE}" \
+    || { echo "ERROR: Step 2 failed — could not create namespace '${NAMESPACE}'. Aborting."; exit 1; }
 fi
 
 # ---------------------------------------------------------------------------
@@ -55,12 +55,12 @@ kubectl wait --for=condition=Ready broker/default \
 # ---------------------------------------------------------------------------
 echo ""
 echo ">>> [Step 5] Applying consumers.yaml ..."
-kubectl apply -f "${SCRIPT_DIR}/consumers.yaml" \
+kubectl apply -f "${SCRIPT_DIR}/consumers.yaml" -n ${NAMESPACE} \
   || { echo "ERROR: Step 5 failed — consumers.yaml. Aborting."; exit 1; }
 
 for consumer in payload-archiver drift-detector retraining-trigger; do
-  echo "  Waiting for deployment/${consumer} in ${APP_NS} ..."
-  kubectl rollout status deployment/"${consumer}" -n "${APP_NS}" --timeout=60s \
+  echo "  Waiting for deployment/${consumer} in ${NAMESPACE} ..."
+  kubectl rollout status deployment/"${consumer}" -n "${NAMESPACE}" --timeout=60s \
     || { echo "ERROR: Step 5 failed — ${consumer} rollout timed out. Aborting."; exit 1; }
 done
 
@@ -88,7 +88,7 @@ kubectl apply -f "${SCRIPT_DIR}/../../Test/sklearn-iris.yaml" \
 
 echo "Waiting for InferenceService 'sklearn-iris' to be Ready (300s timeout) ..."
 kubectl wait --for=condition=Ready inferenceservice/sklearn-iris \
-  -n "${APP_NS}" \
+  -n "${NAMESPACE}" \
   --timeout=300s \
   || { echo "ERROR: Step 7 failed — sklearn-iris InferenceService not Ready. Aborting."; exit 1; }
 
@@ -105,6 +105,6 @@ echo ""
 echo "Triggers in ${KNATIVE_NS}:"
 kubectl get trigger -n "${KNATIVE_NS}"
 echo ""
-echo "InferenceServices in ${APP_NS}:"
-kubectl get inferenceservice -n "${APP_NS}"
+echo "InferenceServices in ${NAMESPACE}:"
+kubectl get inferenceservice -n "${NAMESPACE}"
 echo "════════════════════════════════════════════════════════════════════════"

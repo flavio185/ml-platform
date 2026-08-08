@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
 
-bash "${SCRIPT_DIR}/GatewayAPI/setup-gatewayapi.sh"
+# bash "${SCRIPT_DIR}/GatewayAPI/setup-gatewayapi.sh"
 bash "${SCRIPT_DIR}/CertManager/setup-certmanager.sh"
 bash "${SCRIPT_DIR}/Istio/setup-istio.sh"
 bash "${ROOT_DIR}/Kafka/setup-kafka.sh"
