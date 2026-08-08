@@ -1,9 +1,10 @@
 """Promote Pipeline - Syncs an MLflow `champion` alias to a deployed model's
 KServe manifest, via a PR rather than a direct push.
 
-Shared platform script (baked into ml-platform-base, not any one project's
-image) — used by the `promote-model` ClusterWorkflowTemplate (see
-ArgoWorkflows/cluster-workflow-templates.yaml). It's project-agnostic: which
+Distributed as an installable package (not baked into ml-platform-base) so
+that changes here only require the consuming project to bump a
+pyproject.toml/uv.lock pin and rebuild its own image — not a base-image
+rebuild followed by a project-image rebuild. It's project-agnostic: which
 model, repo, branch, and manifest to touch are all passed in as CLI args by
 the calling project's Argo Workflow, not hardcoded here.
 
@@ -16,10 +17,10 @@ A fresh clone is used rather than editing any project's working copy: this
 script runs in a container built from a Docker image (COPY . .), not a live
 git checkout, so there's no commit history to push against locally.
 
-Requires `gh` (installed alongside this script in base-image/Dockerfile)
-authenticated via the GH_TOKEN env var, and the target repo's "Allow
-auto-merge" setting plus a required status check on the base branch —
-otherwise `gh pr merge --auto` merges with nothing to wait on.
+Requires `gh` (platform-provided, in ml-platform-base) authenticated via the
+GH_TOKEN env var, and the target repo's "Allow auto-merge" setting plus a
+required status check on the base branch — otherwise `gh pr merge --auto`
+merges with nothing to wait on.
 """
 
 import base64
@@ -45,8 +46,22 @@ def get_champion_source_uri(model_name: str) -> tuple[str, str]:
     version = client.get_model_version_by_alias(model_name, "champion")
     if not version.source:
         raise ValueError(f"Champion version {version.version} of {model_name} has no source URI")
+
+    source = version.source
+    if source.startswith("models:/"):
+        # MLflow 3.x's "Logged Model" registry (what mlflow.<flavor>.log_model(...,
+        # name=...) registers through) reports a logical models:/<model_id> reference
+        # here, not a resolvable storage URI. KServe's storage-initializer only
+        # understands gs://, s3://, file://, http(s)://, hf:// — models:/ fails with
+        # "Cannot recognize storage type". Resolve to the actual artifact location via
+        # the LoggedModel entity instead.
+        model_id = source.removeprefix("models:/")
+        logged_model = client.get_logged_model(model_id)
+        source = logged_model.artifact_location
+        logger.info(f"Resolved {version.source} -> {source}")
+
     logger.info(f"Champion is {model_name} v{version.version} (run {version.run_id})")
-    return version.version, version.source
+    return version.version, source
 
 
 def update_storage_uri(yaml_path: Path, new_uri: str) -> bool:

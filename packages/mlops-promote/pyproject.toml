@@ -1,0 +1,33 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mlops-promote"
+version = "0.1.0"
+description = "Opens a PR pointing a KServe manifest's storageUri at the current MLflow champion model, and enables auto-merge."
+authors = [
+  { name = "Flavio Venturini" },
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mlflow[extras]>=3.1.1",
+    "loguru",
+    "typer",
+]
+
+[project.scripts]
+promote-model = "mlops_promote.promote:app"
+
+[tool.ruff]
+line-length = 99
+src = ["mlops_promote"]
+include = ["pyproject.toml", "mlops_promote/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mlops_promote"]
+force-sort-within-sections = true

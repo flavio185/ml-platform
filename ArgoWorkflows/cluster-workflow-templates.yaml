@@ -133,9 +133,12 @@ spec:
 # promote-model: Opens a PR pointing a KServe manifest's storageUri at whatever
 # MLflow run the calling project just promoted to the `champion` alias (see
 # mlflow.tracking.MlflowClient.set_registered_model_alias), and enables
-# auto-merge so it lands once the target repo's own CI checks pass. Runs
-# base-image/scripts/promote_model.py, baked into ml-platform-base — fully
-# generic, all specifics (model name, repo, branch, manifest path) are passed
+# auto-merge so it lands once the target repo's own CI checks pass. Runs the
+# `promote-model` console script from the mlops-promote package
+# (packages/mlops-promote) — a project dependency (pyproject.toml/uv.lock),
+# NOT baked into ml-platform-base, so changing it only costs the consuming
+# project a version bump + rebuild, not a base-image rebuild too. Fully
+# generic: all specifics (model name, repo, branch, manifest path) are passed
 # in below by the calling project's Workflow.
 #
 # Requires in the calling project's namespace: a `github-credentials` Secret
@@ -172,7 +175,7 @@ spec:
         command: ["sh", "-c"]
         args:
           - >-
-            python /opt/platform-scripts/promote_model.py
+            promote-model
             --model-name {{inputs.parameters.model-name}}
             --repo {{inputs.parameters.repo}}
             --base-branch {{inputs.parameters.base-branch}}
