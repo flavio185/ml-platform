@@ -98,7 +98,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (service) (rate(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\"}[1m]))",
+          "expr": "sum by (service) (rate(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\", namespace=~\"$namespace\"}[1m]))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -141,7 +141,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(increase(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\"}[5m]))",
+          "expr": "sum(increase(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\", namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "Total (5m)",
           "refId": "A"
         }
@@ -201,7 +201,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (service) (rate(kn_serving_invocation_duration_seconds_sum{service=~\"${service}-.*\"}[1m])) / sum by (service) (rate(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\"}[1m]))",
+          "expr": "sum by (service) (rate(kn_serving_invocation_duration_seconds_sum{service=~\"${service}-.*\", namespace=~\"$namespace\"}[1m])) / sum by (service) (rate(kn_serving_invocation_duration_seconds_count{service=~\"${service}-.*\", namespace=~\"$namespace\"}[1m]))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -254,7 +254,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.99, sum by (service, le) (rate(kn_serving_invocation_duration_seconds_bucket{service=~\"${service}-.*\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (service, le) (rate(kn_serving_invocation_duration_seconds_bucket{service=~\"${service}-.*\", namespace=~\"$namespace\"}[5m])))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -307,7 +307,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum by (service, le) (rate(kn_serving_invocation_duration_seconds_bucket{service=~\"${service}-.*\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (service, le) (rate(kn_serving_invocation_duration_seconds_bucket{service=~\"${service}-.*\", namespace=~\"$namespace\"}[5m])))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }
@@ -381,13 +381,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (kn_service_name) (kn_revision_pods_desired{kn_service_name=~\"$service\"})",
+          "expr": "sum by (kn_service_name) (kn_revision_pods_desired{kn_service_name=~\"$service\", k8s_namespace_name=~\"$namespace\"})",
           "legendFormat": "Desired — {{kn_service_name}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (kn_service_name) (kn_revision_pods_count{kn_service_name=~\"$service\"})",
+          "expr": "sum by (kn_service_name) (kn_revision_pods_count{kn_service_name=~\"$service\", k8s_namespace_name=~\"$namespace\"})",
           "legendFormat": "Actual — {{kn_service_name}}",
           "refId": "B"
         }
@@ -440,7 +440,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum by (kn_service_name) (kn_revision_concurrency_stable{kn_service_name=~\"$service\"})",
+          "expr": "sum by (kn_service_name) (kn_revision_concurrency_stable{kn_service_name=~\"$service\", k8s_namespace_name=~\"$namespace\"})",
           "legendFormat": "{{kn_service_name}}",
           "refId": "A"
         }
@@ -457,7 +457,26 @@
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "definition": "label_values(kn_revision_pods_count, kn_service_name)",
+        "definition": "label_values(kn_revision_pods_count, k8s_namespace_name)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "query": "label_values(kn_revision_pods_count, k8s_namespace_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(kn_revision_pods_count{k8s_namespace_name=~\"$namespace\"}, kn_service_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Service",
@@ -465,7 +484,7 @@
         "name": "service",
         "options": [],
         "query": {
-          "query": "label_values(kn_revision_pods_count, kn_service_name)",
+          "query": "label_values(kn_revision_pods_count{k8s_namespace_name=~\"$namespace\"}, kn_service_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
