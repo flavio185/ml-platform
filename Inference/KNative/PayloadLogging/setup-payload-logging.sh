@@ -60,7 +60,7 @@ kubectl apply -f "${SCRIPT_DIR}/consumers.yaml" -n ${NAMESPACE} \
 
 for consumer in payload-archiver drift-detector retraining-trigger; do
   echo "  Waiting for deployment/${consumer} in ${NAMESPACE} ..."
-  kubectl rollout status deployment/"${consumer}" -n "${NAMESPACE}" --timeout=60s \
+  kubectl rollout status deployment/"${consumer}" -n "${NAMESPACE}" --timeout=120s \
     || { echo "ERROR: Step 5 failed — ${consumer} rollout timed out. Aborting."; exit 1; }
 done
 
