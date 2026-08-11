@@ -1,7 +1,7 @@
 # File: consumers.yaml
 # Purpose: Stub consumer Deployment + ClusterIP Service for the CloudEvent payload logging pipeline
 # Dependencies: namespace inference-logging must exist (namespace.yaml);
-#               ../trigger.yaml will route events here once the Broker is Ready
+#               trigger.yaml will route events here once the Broker is Ready
 
 # SECURITY: mTLS and AuthorizationPolicy intentionally omitted.
 # For production hardening add PeerAuthentication and AuthorizationPolicy.

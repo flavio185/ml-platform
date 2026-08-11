@@ -1,6 +1,6 @@
 # File: kafka-cluster.yaml
 # Purpose: Single-node Kafka cluster via Strimzi in KRaft mode — matches the bootstrap address
-#          expected by Inference/KNative/kafka-broker-config.yaml
+#          expected by Inference/KNativeEventing/kafka-broker-config.yaml
 #
 # Resulting bootstrap service (created automatically by Strimzi):
 #   kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092

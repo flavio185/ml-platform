@@ -53,12 +53,16 @@ KServe InferenceService (per-project namespace, e.g. ml-credit-default — any p
 
 > **NEXT STEP:** `payload-archiver` is an echo-stub — captures every payload for inspection via
 > `kubectl logs`, but doesn't persist it durably yet. See
-> `../KNative/PayloadLogging/README.md`.
+> `../PayloadArchiving/README.md`.
 
 Optional, per-project: a project wanting live CloudEvent-driven drift detection or retraining
-defines its own `Trigger` + consumer — see `../KNative/README.md` → "Per-project triggers
+defines its own `Trigger` + consumer — see `../KNativeEventing/README.md` → "Per-project triggers
 (optional)". `ml-default-payment-project` instead uses a simpler pattern (an offline pipeline
 step calling an Argo Events webhook directly), which is the recommended default.
+
+Payload capture is entirely optional — this InferenceService serves traffic fine without
+`../KNativeEventing/`/`../PayloadArchiving/` installed at all; the `logger` field would just have
+nowhere to deliver events.
 
 ### CloudEvent types emitted
 
@@ -73,10 +77,11 @@ step calling an Argo Events webhook directly), which is the recommended default.
 http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-serving/default
 ```
 
-See `Inference/KNative/PayloadLogging/` for the archiver consumer and `ml-default-payment-project/gitops/kserve-inference.yaml` for a real, working `InferenceService` with logging configured (`Inference/Test/sklearn-iris.yaml` is an optional demo/smoke-test alternative — see `Inference/Test/README.md`).
+See `Inference/PayloadArchiving/` for the archiver consumer and `ml-default-payment-project/gitops/kserve-inference.yaml` for a real, working `InferenceService` with logging configured (`Inference/Test/sklearn-iris.yaml` is an optional demo/smoke-test alternative — see `Inference/Test/README.md`).
 
 ## Dependencies
 
 - cert-manager (`Inference/CertManager/setup-certmanager.sh`)
 - Istio (`Inference/Istio/setup-istio.sh`)
-- Knative Serving + Eventing (`Inference/KNative/setup-knative.sh`)
+- Knative Serving (`Inference/KNativeServing/setup-knative-serving.sh`) — Knative Eventing is
+  NOT required for KServe itself, only for payload capture (see above)

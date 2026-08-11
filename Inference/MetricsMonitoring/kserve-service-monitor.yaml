@@ -18,7 +18,7 @@ spec:
   # protobuf channel feeding the autoscaler, never meant for Prometheus).
   # It had nothing listening because request-metrics-protocol defaulted to
   # "none" — fixed via a config-observability patch, see
-  # ../KNative/setup-knative.sh.
+  # ../KNativeServing/setup-knative-serving.sh.
   - port: http-usermetric
     interval: 15s
 

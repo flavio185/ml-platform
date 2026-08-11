@@ -41,7 +41,7 @@ KServe InferenceService  (project namespace, e.g. ml-credit-default — any proj
 > **NEXT STEP (not built yet):** `payload-archiver` is deliberately just an echo-stub for now —
 > it guarantees every inference payload lands *somewhere* and is inspectable. Replacing it with a
 > durable sink (e.g. an Azure Blob Storage / data lake writer) is the next piece of work — see
-> `KNative/PayloadLogging/README.md`.
+> `PayloadArchiving/README.md`.
 
 Everything above the Broker is already project-agnostic — confirmed working today with
 `ml-default-payment-project`'s `default-payment-predictor` InferenceService in namespace
@@ -51,18 +51,26 @@ itself needs no per-project configuration.
 **Optional, per-project, not built by the platform:** a project that wants live CloudEvent-driven
 drift detection or automated retraining defines its own `Trigger` (filtered by CloudEvent type,
 subscriber pointing at its own consumer in its own namespace) inside its own `gitops/` — see
-`KNative/README.md` → "Per-project triggers (optional)".
+`KNativeEventing/README.md` → "Per-project triggers (optional)".
 
 ## Components
 
-| Folder | Component | Version |
-|--------|-----------|---------|
-| `CertManager/` | cert-manager (TLS certificate management) | v1.20.1 |
-| `Istio/` | Istio service mesh + IngressGateway | v1.29.1 |
-| `KNative/` | Knative Serving + net-istio + Knative Eventing + Kafka Broker plugin | v1.21.2 |
-| `KServe/` | KServe model server (Serverless mode) | v0.17.0 |
-| `MetricsMonitoring/` | Prometheus `ServiceMonitor`s + Grafana dashboard for KServe/Knative metrics | — |
-| `Test/` | Optional smoke-test `InferenceService` manifests + end-to-end test script (not required for platform install) | — |
+| Folder | Component | Required? | Version |
+|--------|-----------|------------|---------|
+| `CertManager/` | cert-manager (TLS certificate management) | Required | v1.20.1 |
+| `Istio/` | Istio service mesh + IngressGateway | Required | v1.29.1 |
+| `KNativeServing/` | Knative Serving + net-istio — scale-to-zero autoscaling, traffic routing | Required | v1.21.2 |
+| `KServe/` | KServe model server (Serverless mode) | Required | v0.17.0 |
+| `MetricsMonitoring/` | Prometheus `ServiceMonitor`s + Grafana dashboard for KServe/Knative metrics | Required | — |
+| `KNativeEventing/` | Knative Eventing + Kafka Broker plugin — the shared event bus | Optional — only for CloudEvent-driven features | v1.21.2 |
+| `PayloadArchiving/` | Generic consumer that captures every inference payload via the Broker | Optional — depends on `KNativeEventing/` | — |
+| `Test/` | Optional smoke-test `InferenceService` manifests + end-to-end test script | Optional | — |
+
+`KNativeServing/` and `KNativeEventing/` are independent Knative subprojects — Eventing has no
+technical dependency on Serving (or Istio). They're installed together here purely because this
+platform wants both, not because either requires the other. If you never need payload capture or
+any other CloudEvent consumer, `KNativeEventing/`, `Kafka/` (one level up), and `PayloadArchiving/`
+can all be skipped — `KNativeServing/` + `KServe/` alone is a complete, working serving stack.
 
 Versions above are read from each component's `setup-*.sh` script (source of truth) — verify there directly if this table drifts again.
 
@@ -83,13 +91,17 @@ above) is captured automatically once this finishes.
 Manual step-by-step:
 
 ```bash
-bash Inference/CertManager/setup-certmanager.sh    # 1. cert-manager
-bash Inference/Istio/setup-istio.sh                # 2. Istio
-bash Kafka/setup-kafka.sh                          # 3. Kafka (Strimzi)
-bash Inference/KNative/setup-knative.sh            # 4. Knative Serving + Eventing + Kafka Broker
-bash Inference/KServe/setup-kserve.sh              # 5. KServe
-bash Inference/MetricsMonitoring/setup-kserve-metrics-and-monitoring.sh  # 6. Metrics
-bash Inference/KNative/PayloadLogging/setup-payload-logging.sh           # 7. Payload logging
+# Required — a complete, working serving stack on its own
+bash Inference/CertManager/setup-certmanager.sh          # 1. cert-manager
+bash Inference/Istio/setup-istio.sh                      # 2. Istio
+bash Inference/KNativeServing/setup-knative-serving.sh    # 3. Knative Serving + net-istio
+bash Inference/KServe/setup-kserve.sh                     # 4. KServe
+bash Inference/MetricsMonitoring/setup-kserve-metrics-and-monitoring.sh  # 5. Metrics
+
+# Optional — only needed for CloudEvent-driven features (currently: payload capture)
+bash Kafka/setup-kafka.sh                                 # 6. Kafka (Strimzi)
+bash Inference/KNativeEventing/setup-knative-eventing.sh  # 7. Knative Eventing + Kafka Broker plugin
+bash Inference/PayloadArchiving/setup-payload-archiving.sh # 8. Payload archiving
 ```
 
 ## Testing the platform (optional)
@@ -103,9 +115,9 @@ namespace first (`bash app-ns/setup-app-ns.sh`), which is intentionally not a de
 ## Dependencies
 
 - AKS cluster running and `kubeconfig` configured (`AKS/aks_cluster_manager.sh getcreds`)
-- `kube-prometheus-stack` installed (`Observability/setup-monitoring.sh`) — required before step 6
+- `kube-prometheus-stack` installed (`Observability/setup-monitoring.sh`) — required before step 5
 
 ## Notes
 
-- After installing Knative Serving (step 4), if KServe was already running, restart it so it detects Knative: `kubectl rollout restart deployment/kserve-controller-manager -n kserve`
-- The Knative `kafka-broker-dispatcher` pod may trigger cluster autoscaler scale-up on first deploy — `setup-payload-logging.sh` waits up to 300s for Triggers to become Ready
+- After installing Knative Serving (step 3), if KServe was already running, restart it so it detects Knative: `kubectl rollout restart deployment/kserve-controller-manager -n kserve`
+- The Knative `kafka-broker-dispatcher` pod may trigger cluster autoscaler scale-up on first deploy — `setup-payload-archiving.sh` waits up to 300s for the Trigger to become Ready

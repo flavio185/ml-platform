@@ -8,9 +8,9 @@ This relies on the **kube-prometheus-stack** already deployed by `Observability/
 
 By default, Knative's `request-metrics-protocol` and `metrics-protocol` (in the `config-observability`
 ConfigMap, namespace `knative-serving`) are both `"none"` — queue-proxy and the autoscaler emit **no**
-Prometheus-scrapeable data at all until these are set. `../KNative/setup-knative.sh` patches both to
-`"prometheus"` as of step 4b; if metrics show nothing anywhere downstream (Prometheus targets down,
-Grafana panels empty), check this first:
+Prometheus-scrapeable data at all until these are set. `../KNativeServing/setup-knative-serving.sh`
+patches both to `"prometheus"` as of step 4; if metrics show nothing anywhere downstream (Prometheus
+targets down, Grafana panels empty), check this first:
 
 ```shell
 kubectl get configmap config-observability -n knative-serving \
