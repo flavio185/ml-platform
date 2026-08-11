@@ -38,6 +38,10 @@ import typer
 app = typer.Typer()
 
 STORAGE_URI_PATTERN = re.compile(r'(storageUri:\s*")([^"]+)(")')
+# Matches the branch names this script creates (promote_branch below), capturing
+# the epoch timestamp suffix so branches can be ordered by recency without an
+# extra API call per branch.
+PROMOTE_BRANCH_PATTERN = re.compile(r"^promote/champion-v.+-(\d+)$")
 
 
 def get_champion_source_uri(model_name: str) -> tuple[str, str]:
@@ -89,6 +93,40 @@ def run(args: list[str], cwd: Path, env: dict | None = None) -> str:
     return result.stdout.strip()
 
 
+def prune_old_promote_branches(repo_url: str, clone_path: Path, auth_env: dict, keep: int) -> None:
+    """Delete promote branches beyond the `keep` most recent.
+
+    `gh pr merge --auto --delete-branch` only deletes a branch once its PR
+    actually merges — a PR stuck on a failing/missing required check (or
+    superseded by a newer promote run before anyone looks at it) leaves its
+    branch behind forever. Left unchecked that's unbounded branch/PR clutter
+    on every promote run, so this prunes down to the most recent `keep`
+    (ordered by the timestamp already embedded in each branch name) every
+    time a new one is pushed. Deleting a branch with an open PR just closes
+    that PR unmerged, which is correct here: once newer promote attempts
+    exist, an older one is stale by definition.
+    """
+    output = run(
+        ["git", "ls-remote", "--heads", repo_url, "promote/champion-v*"],
+        cwd=clone_path,
+        env=auth_env,
+    )
+    branches = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        ref = line.split("\t", 1)[1]
+        name = ref.removeprefix("refs/heads/")
+        match = PROMOTE_BRANCH_PATTERN.match(name)
+        if match:
+            branches.append((int(match.group(1)), name))
+
+    branches.sort(reverse=True)  # newest (highest timestamp) first
+    for _, name in branches[keep:]:
+        logger.info(f"Pruning old promote branch {name}")
+        run(["git", "push", "origin", "--delete", name], cwd=clone_path, env=auth_env)
+
+
 def git_auth_env(token: str) -> dict:
     """Env vars that authenticate git's HTTPS transport without the token ever
     appearing in argv or a remote URL — both of which git will happily echo
@@ -110,6 +148,9 @@ def promote(
     base_branch: str = typer.Option(..., "--base-branch"),
     yaml_relpath: str = typer.Option(..., "--yaml-relpath"),
     clone_dir: str = "/tmp/gitops-promote",
+    keep_branches: int = typer.Option(
+        2, "--keep-branches", help="Number of most-recent promote/champion-* branches to retain"
+    ),
 ):
     """Open a PR pointing a KServe manifest's storageUri at the current
     MLflow champion, and enable auto-merge so it lands once CI passes.
@@ -159,6 +200,7 @@ def promote(
         cwd=clone_path,
     )
     run(["git", "push", "origin", promote_branch], cwd=clone_path, env=auth_env)
+    prune_old_promote_branches(repo_url, clone_path, auth_env, keep=keep_branches)
 
     pr_url = run(
         [

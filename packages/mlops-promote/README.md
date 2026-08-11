@@ -29,3 +29,14 @@ promote-model \
 Requires `gh` on PATH (platform-provided, in `ml-platform-base`) authenticated
 via the `GH_TOKEN` env var, and `MLFLOW_TRACKING_URI` pointing at the calling
 project's MLflow instance.
+
+## Branch cleanup
+
+Each run pushes a new `promote/champion-v<version>-<timestamp>` branch. Since
+`gh pr merge --auto --delete-branch` only deletes a branch once its PR
+actually merges, a PR stuck on a failing/missing required check (or
+superseded by a later promote run) would otherwise leave its branch behind
+forever. After pushing, `promote-model` prunes older `promote/champion-*`
+branches down to the `--keep-branches` most recent (default `2`) — deleting
+one just closes its still-open PR unmerged, which is correct once a newer
+promote attempt exists.

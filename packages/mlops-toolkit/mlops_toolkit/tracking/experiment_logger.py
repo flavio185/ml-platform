@@ -181,7 +181,17 @@ class MLflowExperimentLogger:
             )
 
     def _log_model(self, pipeline: Pipeline, X_train: pd.DataFrame, algorithm: str):
-        """Log the trained model to MLflow."""
+        """Log the trained model to MLflow.
+
+        Explicitly pins the legacy pickle serialization format: mlflow's
+        sklearn flavor defaults `serialization_format` to "skops" as of
+        mlflow>=3.x, which writes `model.skops` instead of `model.pkl`. The
+        deployed KServe runtime (kserve/sklearnserver, see
+        gitops/kserve-inference.yaml) only knows how to load `model.pkl`/
+        `model.joblib` -- a model logged with the new default fails to serve
+        with a ModelMissingError even though the artifact download itself
+        succeeds, since it simply doesn't recognize `model.skops`.
+        """
         signature = infer_signature(X_train, pipeline.predict(X_train))
 
         mlflow.sklearn.log_model(
@@ -190,6 +200,7 @@ class MLflowExperimentLogger:
             registered_model_name=self.model_name,
             signature=signature,
             input_example=X_train.head(3),
+            serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE,
         )
 
         logger.info(f"Model registered: {self.model_name} ({algorithm})")
