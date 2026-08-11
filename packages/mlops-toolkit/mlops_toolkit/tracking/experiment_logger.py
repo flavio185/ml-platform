@@ -49,6 +49,9 @@ class MLflowExperimentLogger:
         confusion_matrix,
         feature_metadata: dict,
         run_name: str | None = None,
+        dataset_uri: str | None = None,
+        dataset_version_id: str | None = None,
+        dataset_last_modified: str | None = None,
     ) -> str:
         """Log a complete training run to MLflow.
 
@@ -60,6 +63,13 @@ class MLflowExperimentLogger:
             confusion_matrix: Confusion matrix plot
             feature_metadata: Feature metadata dictionary
             run_name: Optional name for the run
+            dataset_uri: URI of the exact dataset snapshot training used
+                (e.g. the Gold parquet), for lineage tracking. Pass what the
+                caller actually resolved/read -- this module has no way to
+                determine that on its own -- omit if unknown.
+            dataset_version_id: Version identifier for `dataset_uri` (e.g.
+                an S3 object version ID)
+            dataset_last_modified: Last-modified timestamp for `dataset_uri`
 
         Returns:
             The run ID, for champion comparison/promotion by the caller.
@@ -73,7 +83,11 @@ class MLflowExperimentLogger:
             mlflow.log_metrics(metrics)
             self._log_confusion_matrix(confusion_matrix)
             mlflow.log_dict(feature_metadata, "feature_metadata.json")
-            self._log_dataset_metadata(feature_metadata)
+            self._log_dataset_metadata(
+                dataset_uri=dataset_uri,
+                dataset_version_id=dataset_version_id,
+                dataset_last_modified=dataset_last_modified,
+            )
             self._log_model(pipeline, X_train, algorithm)
 
             run_id = mlflow.active_run().info.run_id
@@ -145,32 +159,24 @@ class MLflowExperimentLogger:
         mlflow.log_artifact("confusion_matrix.png")
         plt.close()
 
-    def _log_dataset_metadata(self, feature_metadata: dict):
-        """Log dataset metadata for lineage tracking.
+    def _log_dataset_metadata(
+        self,
+        dataset_uri: str | None,
+        dataset_version_id: str | None,
+        dataset_last_modified: str | None,
+    ):
+        """Log lineage for the exact dataset snapshot training used.
 
-        `dataset_uri`/`dataset_version_id` name the Gold snapshot the model
-        was actually trained on -- the only one a drift check (or a human
-        reading the run) can trust as "what was this trained on". The Silver
-        input to feature engineering is lineage one step further back, so it
-        gets a `source_dataset_*` prefix instead of reusing that name.
+        The only thing a drift check (or a human reading the run) needs to
+        trust as "what was this trained on" -- not logged at all if the
+        caller doesn't have it.
         """
-        if "gold_dataset" in feature_metadata:
-            gold_dataset = feature_metadata["gold_dataset"]
+        if dataset_uri is not None:
             mlflow.log_params(
                 {
-                    "dataset_uri": gold_dataset.get("source_uri", "unknown"),
-                    "dataset_version_id": gold_dataset.get("version_id", "unknown"),
-                    "dataset_last_modified": gold_dataset.get("last_modified", "unknown"),
-                }
-            )
-
-        if "source_dataset" in feature_metadata:
-            source_dataset = feature_metadata["source_dataset"]
-            mlflow.log_params(
-                {
-                    "source_dataset_uri": source_dataset.get("source_uri", "unknown"),
-                    "source_dataset_version_id": source_dataset.get("version_id", "unknown"),
-                    "source_dataset_last_modified": source_dataset.get("last_modified", "unknown"),
+                    "dataset_uri": dataset_uri,
+                    "dataset_version_id": dataset_version_id or "unknown",
+                    "dataset_last_modified": dataset_last_modified or "unknown",
                 }
             )
 
