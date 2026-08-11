@@ -1,8 +1,8 @@
 # File: trigger.yaml
 # Purpose: Route all CloudEvents from the shared Knative Broker to the generic
 #          payload-archiver consumer.
-# Dependencies: broker.yaml applied first (Broker 'default' must be Ready);
-#               PayloadLogging/consumers.yaml applied first (payload-archiver Service must
+# Dependencies: ../KNativeEventing/broker.yaml applied first (Broker 'default' must be Ready);
+#               consumers.yaml applied first (payload-archiver Service must
 #               exist in namespace inference-logging)
 
 # SECURITY: mTLS and AuthorizationPolicy intentionally omitted.
@@ -11,15 +11,16 @@
 # NOTE: Trigger objects must live in the same namespace as the Broker they
 # reference (knative-serving) — this is a Knative Eventing constraint, not a
 # choice. This applies even to per-project Triggers a project defines for its
-# own consumers (see ../README.md "Per-project triggers (optional)") — they're
-# authored/owned in the project's own gitops/, but still get applied here.
+# own consumers (see ../KNativeEventing/README.md "Per-project triggers
+# (optional)") — they're authored/owned in the project's own gitops/, but
+# still get applied here.
 
 ---
 # payload-archiver-trigger: receives ALL events (request + response) — no filter.
 # This is the ONLY shared, platform-owned Trigger. It archives every inference
 # payload from every project, regardless of namespace, for audit, replay, and
 # dataset reconstruction. Project-specific drift/retraining triggers are NOT
-# defined here — see ../README.md "Per-project triggers (optional)".
+# defined here — see ../KNativeEventing/README.md "Per-project triggers (optional)".
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
 metadata:

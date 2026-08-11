@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# File: setup-payload-logging.sh
-# Purpose: Apply all KServe payload logging resources in strict dependency order
-# Dependencies: setup-knative.sh must have run; Kafka cluster reachable at configured bootstrap address;
+# File: setup-payload-archiving.sh
+# Purpose: Apply all payload-archiving resources in strict dependency order
+# Dependencies: KNativeEventing/setup-knative-eventing.sh must have run;
+#               Kafka cluster reachable at configured bootstrap address;
 #               KServe installed and functional; kubectl configured for target AKS cluster
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EVENTING_DIR="${SCRIPT_DIR}/../KNativeEventing"
 KNATIVE_NS="knative-serving"
 NAMESPACE="inference-logging"
 
@@ -23,7 +25,7 @@ kubectl apply -f "${SCRIPT_DIR}/namespace.yaml" \
 # ---------------------------------------------------------------------------
 echo ""
 echo ">>> [Step 2] Applying kafka-broker-config.yaml ..."
-kubectl apply -f "${SCRIPT_DIR}/../kafka-broker-config.yaml" \
+kubectl apply -f "${EVENTING_DIR}/kafka-broker-config.yaml" \
   || { echo "ERROR: Step 2 failed — kafka-broker-config.yaml. Aborting."; exit 1; }
 
 echo "Waiting for KafkaBrokerConfig 'kafka-broker-config' to be Ready (60s) ..."
@@ -37,7 +39,7 @@ kubectl wait --for=condition=Ready kafkabrokerconfiguration/kafka-broker-config 
 # ---------------------------------------------------------------------------
 echo ""
 echo ">>> [Step 3] Applying broker.yaml ..."
-kubectl apply -f "${SCRIPT_DIR}/../broker.yaml" \
+kubectl apply -f "${EVENTING_DIR}/broker.yaml" \
   || { echo "ERROR: Step 3 failed — broker.yaml. Aborting."; exit 1; }
 
 echo "Waiting for Broker 'default' to be Ready (90s timeout) ..."
@@ -59,25 +61,25 @@ kubectl rollout status deployment/payload-archiver -n "${NAMESPACE}" --timeout=1
   || { echo "ERROR: Step 4 failed — payload-archiver rollout timed out. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 5: Apply Triggers
+# Step 5: Apply Trigger
 # ---------------------------------------------------------------------------
 echo ""
 echo ">>> [Step 5] Applying trigger.yaml ..."
-kubectl apply -f "${SCRIPT_DIR}/../trigger.yaml" \
+kubectl apply -f "${SCRIPT_DIR}/trigger.yaml" \
   || { echo "ERROR: Step 5 failed — trigger.yaml. Aborting."; exit 1; }
 
-echo "Waiting for all Triggers to be Ready in ${KNATIVE_NS} (300s timeout — may need to scale a node) ..."
+echo "Waiting for the Trigger to be Ready in ${KNATIVE_NS} (300s timeout — may need to scale a node) ..."
 kubectl wait --for=condition=Ready trigger --all \
   -n "${KNATIVE_NS}" \
   --timeout=300s \
-  || { echo "ERROR: Step 5 failed — one or more Triggers not Ready. Aborting."; exit 1; }
+  || { echo "ERROR: Step 5 failed — Trigger not Ready. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Final status
 # ---------------------------------------------------------------------------
 echo ""
 echo "════════════════════════════════════════════════════════════════════════"
-echo "Payload logging pipeline deployed successfully. Final status:"
+echo "Payload archiving pipeline deployed successfully. Final status:"
 echo ""
 echo "Brokers in ${KNATIVE_NS}:"
 kubectl get broker -n "${KNATIVE_NS}"
@@ -91,5 +93,5 @@ echo ""
 echo "No demo InferenceService is deployed by this script — any project's"
 echo "InferenceService pointed at the shared Broker URL is already captured."
 echo "To validate the pipeline end-to-end with the optional iris smoke test,"
-echo "see ../../Test/README.md."
+echo "see ../Test/README.md."
 echo "════════════════════════════════════════════════════════════════════════"

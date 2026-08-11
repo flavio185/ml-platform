@@ -35,5 +35,5 @@ kubectl get svc istio-ingressgateway -n istio-system
 
 ## Notes
 
-- Must be installed **before** Knative and KServe
+- Must be installed **before** Knative Serving (`../KNativeServing/`) and KServe — Knative Eventing (`../KNativeEventing/`) has no dependency on Istio
 - The IngressGateway external IP is used by `Inference/Test/test.sh` to route inference requests

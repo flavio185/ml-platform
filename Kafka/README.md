@@ -2,6 +2,10 @@
 
 Installs a single-broker [Kafka](https://kafka.apache.org/) cluster via [Strimzi](https://strimzi.io/) on AKS. Kafka is the messaging backend for the Knative Kafka Broker that routes KServe inference payload CloudEvents to consumer services.
 
+This is only needed to support `Inference/KNativeEventing/` + `Inference/PayloadArchiving/`
+(currently the only consumer of Knative Eventing on this platform). Core KServe model serving
+does not depend on Kafka at all — skip this entirely if you don't need inference payload capture.
+
 ## Stack
 
 | Component | Version | Purpose |
@@ -30,7 +34,7 @@ After install, the bootstrap service is available cluster-internally at:
 kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
 ```
 
-This address is pre-configured in `Inference/KNative/kafka-broker-config.yaml`.
+This address is pre-configured in `Inference/KNativeEventing/kafka-broker-config.yaml`.
 
 ## Architecture
 
@@ -53,4 +57,4 @@ kubectl get svc kafka-cluster-kafka-bootstrap -n kafka
 ## Notes
 
 - Storage is `ephemeral` — Kafka data is lost on pod restart. For production, change `storage.type` to `persistent-claim` with an Azure Disk PVC.
-- Must be installed **before** `Inference/KNative/PayloadLogging/setup-payload-logging.sh`
+- Must be installed **before** `Inference/PayloadArchiving/setup-payload-archiving.sh`

@@ -79,3 +79,42 @@ def test_promote_to_champion_on_unknown_run_warns_without_raising(caplog):
     experiment_logger = MLflowExperimentLogger("test-experiment", model_name="test-model-3")
     experiment_logger.promote_to_champion("not-a-real-run-id")
     assert experiment_logger.get_champion_score("accuracy") is None
+
+
+def test_log_training_run_logs_dataset_lineage_when_provided(trained_pipeline):
+    pipeline, X = trained_pipeline
+    experiment_logger = MLflowExperimentLogger("test-experiment", model_name="test-model-4")
+
+    run_id = experiment_logger.log_training_run(
+        pipeline=pipeline,
+        X_train=X,
+        X_test=X,
+        metrics={"accuracy": 0.9},
+        confusion_matrix=None,
+        feature_metadata={},
+        dataset_uri="s3://bucket/gold/features.parquet",
+        dataset_version_id="v-gold-123",
+        dataset_last_modified="2026-01-01T00:00:00",
+    )
+
+    params = mlflow.get_run(run_id).data.params
+    assert params["dataset_uri"] == "s3://bucket/gold/features.parquet"
+    assert params["dataset_version_id"] == "v-gold-123"
+    assert params["dataset_last_modified"] == "2026-01-01T00:00:00"
+
+
+def test_log_training_run_omits_dataset_lineage_when_not_provided(trained_pipeline):
+    pipeline, X = trained_pipeline
+    experiment_logger = MLflowExperimentLogger("test-experiment", model_name="test-model-5")
+
+    run_id = experiment_logger.log_training_run(
+        pipeline=pipeline,
+        X_train=X,
+        X_test=X,
+        metrics={"accuracy": 0.9},
+        confusion_matrix=None,
+        feature_metadata={},
+    )
+
+    params = mlflow.get_run(run_id).data.params
+    assert "dataset_uri" not in params
