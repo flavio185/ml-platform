@@ -74,11 +74,11 @@ ml-platform/
 |
 |-- Ray/                          # KubeRay operator e configuracao
 |-- MLFlow/                       # MLflow server (Helm) + PostgreSQL + Minio
-|-- Inference/
-|   └── KNative/                  # KServe + Knative + Istio + triggers
+|-- Inference/                    # KServe + Knative + Istio; payload logging genérico
+|   └── KNative/                  #   Broker compartilhado + Trigger único -> namespace inference-logging
 |-- Kafka/                        # Kafka para payload logging
 |-- Observability/                # Prometheus + Grafana + Loki
-|-- app-ns/                       # Namespace legado (migrado para ml-{projeto})
+|-- app-ns/                       # Namespace legado/demo (migrado para ml-{projeto}; usado hoje só para o smoke-test do KServe e demo de treino Ray)
 |
 └-- setup.sh                      # Script principal — provisiona tudo em ordem
 ```

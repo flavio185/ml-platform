@@ -16,3 +16,8 @@ bash "${SCRIPT_DIR}/KNative/setup-knative.sh"
 bash "${SCRIPT_DIR}/KServe/setup-kserve.sh"
 bash "${SCRIPT_DIR}/MetricsMonitoring/setup-kserve-metrics-and-monitoring.sh"
 bash "${SCRIPT_DIR}/KNative/PayloadLogging/setup-payload-logging.sh"
+
+# Generic install ends here — no demo namespace (app-ns) or demo model
+# (sklearn-iris) is deployed by this script. Any project's InferenceService
+# pointed at the shared Broker already gets its payloads captured. The iris
+# demo is a separate, optional, manually-run smoke test — see Test/README.md.

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mlops-toolkit"
+version = "0.1.0"
+description = "Shared training, tracking, and pipeline plumbing for sklearn + MLflow projects on this platform."
+authors = [
+  { name = "Flavio Venturini" },
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mlflow[extras]>=3.1.1",
+    "loguru",
+    "pandas",
+    "scikit-learn",
+    "boto3",
+    "matplotlib",
+]
+
+[tool.ruff]
+line-length = 99
+src = ["mlops_toolkit"]
+include = ["pyproject.toml", "mlops_toolkit/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mlops_toolkit"]
+force-sort-within-sections = true
+
+[dependency-groups]
+dev = [
+    "pytest",
+]

@@ -22,7 +22,7 @@ bash Inference/Istio/setup-istio.sh
 
 ## Configuration notes
 
-- `proxy.autoInject=disabled` — Istio sidecar injection is opt-in per namespace (enabled via `istio-injection=enabled` label on `app-ns`)
+- `proxy.autoInject=disabled` — Istio sidecar injection is opt-in per namespace (enabled via the `istio-injection=enabled` label; every project namespace sets this in its own `gitops/namespace.yaml`, e.g. `ml-credit-default`)
 - `cluster-autoscaler.kubernetes.io/safe-to-evict=true` — allows the cluster autoscaler to evict Istio pods on scale-down events
 
 ## Verify
@@ -35,6 +35,5 @@ kubectl get svc istio-ingressgateway -n istio-system
 
 ## Notes
 
-- Must be installed **after** Gateway API CRDs (`Inference/GatewayAPI/setup-gatewayapi.sh`)
 - Must be installed **before** Knative and KServe
 - The IngressGateway external IP is used by `Inference/Test/test.sh` to route inference requests

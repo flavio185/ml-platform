@@ -1,6 +1,6 @@
 # KServe
 
-Installs KServe v0.15.2 in Serverless mode on AKS.
+Installs KServe v0.17.0 in Serverless mode on AKS.
 
 ## Contents
 
@@ -35,20 +35,30 @@ Client
 Istio IngressGateway
   │
   ▼
-KServe InferenceService (app-ns)
+KServe InferenceService (per-project namespace, e.g. ml-credit-default — any project)
   ├── predictor container  →  model prediction
   └── agent sidecar        →  emits CloudEvents
                                     │
                     ┌───────────────▼───────────────┐
                     │  Knative Kafka Broker ingress  │
-                    │  (knative-eventing namespace)  │
+                    │  (knative-eventing namespace,  │
+                    │       SHARED, generic)         │
                     └───────────────┬───────────────┘
                                     │
-               ┌────────────────────┼────────────────────┐
-               ▼                    ▼                     ▼
-       payload-archiver      drift-detector       retraining-trigger
-       (all events)          (request only)       (drift.detected only)
+                                    ▼
+                       payload-archiver (all events)
+                       inference-logging namespace
+                       — generic, decoupled, echo-stub for now —
 ```
+
+> **NEXT STEP:** `payload-archiver` is an echo-stub — captures every payload for inspection via
+> `kubectl logs`, but doesn't persist it durably yet. See
+> `../KNative/PayloadLogging/README.md`.
+
+Optional, per-project: a project wanting live CloudEvent-driven drift detection or retraining
+defines its own `Trigger` + consumer — see `../KNative/README.md` → "Per-project triggers
+(optional)". `ml-default-payment-project` instead uses a simpler pattern (an offline pipeline
+step calling an Argo Events webhook directly), which is the recommended default.
 
 ### CloudEvent types emitted
 
@@ -63,7 +73,7 @@ KServe InferenceService (app-ns)
 http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-serving/default
 ```
 
-See `Inference/KNative/PayloadLogging/` for the consumer services and `Inference/Test/sklearn-iris.yaml` for an example `InferenceService` with logging configured.
+See `Inference/KNative/PayloadLogging/` for the archiver consumer and `ml-default-payment-project/gitops/kserve-inference.yaml` for a real, working `InferenceService` with logging configured (`Inference/Test/sklearn-iris.yaml` is an optional demo/smoke-test alternative — see `Inference/Test/README.md`).
 
 ## Dependencies
 

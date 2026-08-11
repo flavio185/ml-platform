@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # File: test.sh
-# Purpose: Send inference requests and verify CloudEvents flow through Kafka to consumer services
+# Purpose: OPTIONAL smoke test — send inference requests and verify CloudEvents
+#          flow through Kafka to the payload-archiver consumer
 # Dependencies: sklearn-iris InferenceService Ready in namespace app-ns;
-#               consumer Deployments running (payload-archiver, drift-detector, retraining-trigger);
-#               Knative Broker + Triggers configured; jq installed
+#               payload-archiver Deployment running in namespace inference-logging;
+#               Knative Broker + Trigger configured; jq installed
 
 set -euo pipefail
 
 NAMESPACE="app-ns"
+LOGGING_NAMESPACE="inference-logging"
 INFERENCE_SERVICE="sklearn-iris"
 INPUT='{"instances": [[6.8, 2.8, 4.8, 1.4]]}'
 
@@ -64,28 +66,10 @@ echo ""
 echo "════════════════════════════════════════════════════════════════════════"
 echo ">>> Logs from payload-archiver (last 30 lines) ..."
 echo "════════════════════════════════════════════════════════════════════════"
-kubectl logs -l app=payload-archiver -n "${NAMESPACE}" --tail=30
+kubectl logs -l app=payload-archiver -n "${LOGGING_NAMESPACE}" --tail=30
 
 # ---------------------------------------------------------------------------
-# Step 5: Check drift-detector logs (should show request events only)
-# ---------------------------------------------------------------------------
-echo ""
-echo "════════════════════════════════════════════════════════════════════════"
-echo ">>> Logs from drift-detector (last 30 lines) ..."
-echo "════════════════════════════════════════════════════════════════════════"
-kubectl logs -l app=drift-detector -n "${NAMESPACE}" --tail=30
-
-# ---------------------------------------------------------------------------
-# Step 6: Check retraining-trigger logs (should be empty unless drift emitted)
-# ---------------------------------------------------------------------------
-echo ""
-echo "════════════════════════════════════════════════════════════════════════"
-echo ">>> Logs from retraining-trigger (last 30 lines) ..."
-echo "════════════════════════════════════════════════════════════════════════"
-kubectl logs -l app=retraining-trigger -n "${NAMESPACE}" --tail=30
-
-# ---------------------------------------------------------------------------
-# Step 7: kn CLI reference commands
+# Step 5: kn CLI reference commands
 # ---------------------------------------------------------------------------
 echo ""
 echo "════════════════════════════════════════════════════════════════════════"

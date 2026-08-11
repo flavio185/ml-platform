@@ -42,7 +42,7 @@ kubectl apply -f \
   || { echo "ERROR: Failed to apply Knative Serving core. Aborting."; exit 1; }
 
 echo "Waiting for serving deployments in ${NAMESPACE} (120s timeout) ..."
-for deploy in controller webhook activator; do
+for deploy in controller webhook activator autoscaler; do
   kubectl rollout status deployment/${deploy} -n "${NAMESPACE}" --timeout=120s \
     || { echo "ERROR: ${deploy} did not become Ready. Aborting."; exit 1; }
 done
@@ -69,6 +69,60 @@ kubectl patch configmap config-domain \
   --type merge \
   -p '{"data":{"example.com":""}}' \
   || { echo "ERROR: Failed to patch config-domain. Aborting."; exit 1; }
+
+# Two separate keys, both default to "none" and must be set independently:
+#   - request-metrics-protocol: queue-proxy's PER-REQUEST metrics (revision_*
+#     request latency/concurrency series). Confirmed empirically these land
+#     on the predictor's http-usermetric port (9091) once enabled --
+#     ../MetricsMonitoring/kserve-service-monitor.yaml scrapes that port.
+#     NOT http-autometric (9090): that port is queue-proxy's internal-only
+#     OpenCensus/protobuf channel feeding the autoscaler, and stays protobuf
+#     regardless of this setting (confirmed via GIT_CURL_VERBOSE-style
+#     tracing -- Content-Type: application/protobuf even with this set).
+#   - metrics-protocol: the autoscaler/controller/webhook components' OWN
+#     metrics (autoscaler_actual_pods, autoscaler_desired_pods, etc., on the
+#     autoscaler Service's http-metrics port 9090 -- confirmed via
+#     connection-refused until this was set). Also scraped by
+#     ../MetricsMonitoring/kserve-service-monitor.yaml's
+#     knative-autoscaler-monitoring ServiceMonitor.
+# NB: both are Knative 1.21+ keys -- the old metrics.backend-destination key
+# from pre-OTel Knative versions no longer applies and is silently ignored.
+kubectl patch configmap config-observability \
+  -n "${NAMESPACE}" \
+  --type merge \
+  -p '{"data":{"request-metrics-protocol":"prometheus","metrics-protocol":"prometheus"}}' \
+  || { echo "ERROR: Failed to patch config-observability. Aborting."; exit 1; }
+
+# The autoscaler's OTel Prometheus exporter (port 9090, just enabled above via
+# metrics-protocol) has an observed intermittent startup race: on some pod starts
+# it never binds 9090 even with the config already in place -- confirmed via
+# repeated connection-refused against a pod that had been running for 20+ minutes
+# with the correct config the whole time. Only a container restart clears it. The
+# stock livenessProbe/readinessProbe (both port 8080, the stats-websocket server)
+# don't notice since that server comes up fine regardless -- so this can sit broken
+# indefinitely with no signal beyond an empty Grafana dashboard. Repoint liveness at
+# the metrics port so kubelet restarts the container automatically when it happens;
+# readinessProbe is left on 8080 (Service-endpoint/traffic-routing signal, unrelated).
+# Must run after the config-observability patch above -- otherwise port 9090 isn't
+# listening at all yet (not just intermittently), and the probe crash-loops the pod.
+echo ""
+echo ">>> Patching autoscaler livenessProbe to self-heal a known metrics-exporter startup race ..."
+kubectl patch deployment autoscaler -n "${NAMESPACE}" --type=json -p '[
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/livenessProbe",
+      "value": {
+        "httpGet": { "path": "/metrics", "port": 9090, "scheme": "HTTP" },
+        "initialDelaySeconds": 10,
+        "periodSeconds": 15,
+        "timeoutSeconds": 5,
+        "failureThreshold": 3,
+        "successThreshold": 1
+      }
+    }
+  ]' || { echo "ERROR: Failed to patch autoscaler livenessProbe. Aborting."; exit 1; }
+kubectl rollout status deployment/autoscaler -n "${NAMESPACE}" --timeout=120s \
+  || { echo "ERROR: autoscaler did not become Ready after livenessProbe patch. Aborting."; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Step 5: Knative Eventing CRDs

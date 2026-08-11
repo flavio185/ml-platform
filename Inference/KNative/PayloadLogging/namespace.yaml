@@ -1,0 +1,13 @@
+# File: namespace.yaml
+# Purpose: Dedicated namespace for the shared, generic CloudEvent payload-logging
+# consumer pipeline. Decoupled from any single project or demo namespace — any
+# project's InferenceService can point its logger.url at the shared Broker
+# (../broker.yaml) and its events land here, regardless of which namespace the
+# InferenceService itself lives in.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference-logging
+  labels:
+    app.kubernetes.io/part-of: ml-platform
+    app.kubernetes.io/component: inference-payload-logging
