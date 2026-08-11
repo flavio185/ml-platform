@@ -156,8 +156,10 @@ kubectl get validatingwebhookconfiguration,mutatingwebhookconfiguration -o name 
   | grep "knative" \
   | xargs -r kubectl delete --ignore-not-found 2>/dev/null || true
 
-# app-ns
-kubectl delete namespace app-ns --wait=true --timeout=60s 2>/dev/null || true
+# inference-logging (payload-archiver consumer namespace — owned by Inference/,
+# unlike app-ns which is a separate, optional demo namespace with its own
+# lifecycle managed by app-ns/setup-app-ns.sh)
+kubectl delete namespace inference-logging --wait=true --timeout=60s 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 echo ""

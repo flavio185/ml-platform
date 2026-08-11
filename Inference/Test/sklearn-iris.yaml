@@ -1,7 +1,11 @@
 # File: sklearn-iris.yaml
-# Purpose: KServe InferenceService for the sklearn iris model with Knative Kafka payload logging
+# Purpose: OPTIONAL smoke-test InferenceService for the sklearn iris demo model,
+#          used to validate the payload-logging pipeline end-to-end. NOT part of
+#          the production platform install (Inference/setup-kserve-stack.sh does
+#          not deploy this) — apply it manually, see ../README.md.
 # Dependencies: KServe installed; Knative Broker 'default' Ready in knative-serving;
-#               kafka-broker-ingress Service reachable inside the cluster
+#               kafka-broker-ingress Service reachable inside the cluster;
+#               namespace app-ns created manually first (bash app-ns/setup-app-ns.sh)
 
 # KServe emits CloudEvents of type:
 #   org.kubeflow.serving.inference.request  (on every inbound request)

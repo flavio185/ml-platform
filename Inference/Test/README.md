@@ -1,12 +1,18 @@
 # Test
 
-End-to-end inference test resources. Deploys an `sklearn-iris` `InferenceService` and validates the full pipeline: HTTP prediction → Kafka CloudEvents → consumer services.
+OPTIONAL end-to-end inference smoke test. Deploys a demo `sklearn-iris` `InferenceService` and
+validates the full payload-logging pipeline: HTTP prediction → Kafka CloudEvents →
+payload-archiver.
+
+This is **not** part of the generic platform install (`Inference/setup-kserve-stack.sh` does not
+deploy anything in this directory) — it exists purely to prove the pipeline works, using a
+throwaway demo model instead of a real project's InferenceService.
 
 ## Contents
 
 | File | Purpose |
 |------|---------|
-| `sklearn-iris.yaml` | `InferenceService` for the sklearn iris model with Kafka payload logging enabled |
+| `sklearn-iris.yaml` | Demo `InferenceService` for the sklearn iris model with Kafka payload logging enabled |
 | `sklearn-iris-scale.yaml` | Variant with custom autoscaling annotations |
 | `iris-input.json` | Sample iris input payload for manual `curl` testing |
 | `test.sh` | End-to-end test script |
@@ -14,20 +20,28 @@ End-to-end inference test resources. Deploys an `sklearn-iris` `InferenceService
 ## InferenceService
 
 - **Model**: sklearn iris classifier loaded from `gs://kfserving-examples/models/sklearn/1.0/model`
-- **Namespace**: `app-ns`
-- **Logger**: emits `inference.request` and `inference.response` CloudEvents to the Kafka Broker ingress
+- **Namespace**: `app-ns` (demo namespace, unrelated to any real project's namespace)
+- **Logger**: emits `inference.request` and `inference.response` CloudEvents to the shared Kafka Broker ingress
 
 ## Running the test
 
 ```bash
+# 1. Create the demo namespace (not done automatically by Inference/setup-kserve-stack.sh)
+bash app-ns/setup-app-ns.sh
+
+# 2. Deploy the demo InferenceService
+kubectl apply -f Inference/Test/sklearn-iris.yaml
+kubectl wait --for=condition=Ready inferenceservice/sklearn-iris -n app-ns --timeout=300s
+
+# 3. Run the smoke test
 bash Inference/Test/test.sh
 ```
 
-The script:
+`test.sh`:
 1. Resolves the Istio IngressGateway IP and InferenceService hostname
 2. Sends 9 POST requests to `/v1/models/sklearn-iris:predict`
 3. Waits 5 seconds for CloudEvents to propagate through Kafka
-4. Prints logs from `payload-archiver`, `drift-detector`, and `retraining-trigger`
+4. Prints logs from `payload-archiver` (in the `inference-logging` namespace)
 
 ## Manual request
 
@@ -49,7 +63,7 @@ Expected response:
 
 ## Dependencies
 
-- `app-ns` namespace created (`app-ns/setup-app-ns.sh`)
 - Full inference stack installed (`Inference/setup-kserve-stack.sh`)
-- Payload logging pipeline deployed (`Inference/KNative/PayloadLogging/setup-payload-logging.sh`)
+- `app-ns` namespace created — **explicit, manual step for this demo only**, not required by
+  `Inference/setup-kserve-stack.sh` (`bash app-ns/setup-app-ns.sh`)
 - `jq` installed locally
